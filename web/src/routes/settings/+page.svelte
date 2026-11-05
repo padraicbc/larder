@@ -71,6 +71,55 @@
 		await invalidateAll();
 	}
 
+	type BackupSummary = { exportedAt: string; logs: number; products: number; recipes: number; plans: number; pantry: number; ratings: number; dayAdjustments: number };
+	let backupFile = $state<HTMLInputElement>();
+	let restoreDialog: HTMLDialogElement;
+	let backupPayload = $state<unknown>(null);
+	let backupSummary = $state<BackupSummary | null>(null);
+	let backupName = $state('');
+	let checkingBackup = $state(false);
+	let restoring = $state(false);
+
+	async function chooseBackup(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		checkingBackup = true;
+		backupPayload = null;
+		backupSummary = null;
+		try {
+			if (file.size > 32 * 1024 * 1024) throw new Error('Backup is over 32 MB.');
+			let payload: unknown;
+			try { payload = JSON.parse(await file.text()); } catch { throw new Error('Choose a valid Larder backup JSON file.'); }
+			const summary = await api<BackupSummary>('/backup/preview', { body: payload });
+			backupPayload = payload;
+			backupSummary = summary;
+			backupName = file.name;
+			restoreDialog.showModal();
+		} catch (err) {
+			toast(errorText(err), 'error');
+		} finally {
+			checkingBackup = false;
+		}
+	}
+
+	async function restoreBackup() {
+		if (!backupPayload || restoring) return;
+		restoring = true;
+		try {
+			await api('/backup/restore', { body: backupPayload });
+			await invalidateAll();
+			restoreDialog.close();
+			backupPayload = null;
+			toast('Backup restored. Your data has been replaced.');
+		} catch (err) {
+			toast(errorText(err), 'error');
+		} finally {
+			restoring = false;
+		}
+	}
+
 	// ---- appearance (stored in this browser only) ----
 	let theme = $state(typeof localStorage !== 'undefined' ? (localStorage.getItem('theme') ?? 'system') : 'system');
 	function setTheme(t: string) {
@@ -180,6 +229,39 @@
 	</div>
 	</fieldset>
 </section>
+
+<section class="mt-12 max-w-3xl">
+	<h2 class="text-xl font-bold">Backup and restore</h2>
+	<p class="text-base-content/70 mt-2 text-sm">Save your profile, food logs, products and nutrition, calorie adjustments, recipes, plans, shopping lists, pantry and ratings to a JSON file. Keep it somewhere you can access if you change phones.</p>
+	<p class="text-base-content/60 mt-2 text-sm">This backs up your own data. Account details, model settings, API keys and appearance are excluded; restoring keeps your current sign-in and model settings.</p>
+	<div class="mt-4 flex flex-wrap gap-2">
+		<a class="btn btn-primary" href="/api/backup" download>Download backup</a>
+		<input bind:this={backupFile} type="file" accept="application/json,.json" class="hidden" onchange={chooseBackup} />
+		<button class="btn" disabled={checkingBackup || restoring} onclick={() => backupFile?.click()}>{#if checkingBackup}<span class="loading loading-spinner loading-sm"></span>{/if}Restore from file</button>
+	</div>
+	<p class="text-base-content/60 mt-2 text-xs">You’ll review the file before restoring. Restore replaces your current data rather than merging it; download a backup first if you want to keep both versions.</p>
+</section>
+
+<dialog bind:this={restoreDialog} class="modal modal-bottom sm:modal-middle" oncancel={(event) => { if (restoring) event.preventDefault(); }}>
+	<div class="modal-box">
+		<h3 class="text-xl font-bold">Replace your data with this backup?</h3>
+		<p class="mt-2 break-all font-semibold">{backupName}</p>
+		{#if backupSummary}
+			<p class="text-base-content/60 mt-1 text-sm">Exported {new Date(backupSummary.exportedAt).toLocaleString()}</p>
+			<dl class="mt-4 grid grid-cols-2 gap-2 text-sm">
+				{#each [['Food logs', backupSummary.logs], ['Saved products', backupSummary.products], ['Recipes', backupSummary.recipes], ['Plans', backupSummary.plans], ['Pantry items', backupSummary.pantry], ['Ratings', backupSummary.ratings], ['Day adjustments', backupSummary.dayAdjustments]] as [label, count]}
+					<div class="flex justify-between gap-2 rounded-box bg-base-200 p-2"><dt>{label}</dt><dd class="font-semibold">{count}</dd></div>
+				{/each}
+			</dl>
+		{/if}
+		<p class="mt-4 text-sm">Your existing profile and saved data will be replaced. Your account and model settings stay as they are.</p>
+		<div class="modal-action">
+			<button class="btn btn-ghost" disabled={restoring} onclick={() => { restoreDialog.close(); backupPayload = null; }}>Cancel</button>
+			<button class="btn btn-error" disabled={restoring || !backupSummary} onclick={restoreBackup}>{#if restoring}<span class="loading loading-spinner loading-sm"></span>{/if}{restoring ? 'Restoring…' : 'Replace data and restore'}</button>
+		</div>
+	</div>
+	<form method="dialog" class="modal-backdrop"><button disabled={restoring}>close</button></form>
+</dialog>
 
 <section class="mt-12 max-w-3xl">
 	<h2 class="text-xl font-bold">Account</h2>

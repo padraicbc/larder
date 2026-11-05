@@ -71,6 +71,9 @@ func (s *Server) Handler() http.Handler {
 	admin := func(pattern string, h http.HandlerFunc) { mux.Handle(pattern, s.requireAuth(s.requireAdmin(h))) }
 
 	protected("GET /api/auth/me", s.me)
+	protected("GET /api/backup", s.exportBackup)
+	protected("POST /api/backup/preview", s.importBackup)
+	protected("POST /api/backup/restore", s.importBackup)
 
 	protected("GET /api/profile", s.getProfile)
 	protected("PUT /api/profile", s.putProfile)

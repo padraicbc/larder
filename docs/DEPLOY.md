@@ -115,10 +115,18 @@ e.g. `http://192.168.1.20:11434/v1` or its Tailscale name.
 
 ## Backups and updates
 
-- All data is one JSON file (`NUTRI_DATA`). It's written atomically, so copying it while
+Users can export and restore their own data from **Settings → Backup and restore**. The portable backup includes the profile and all saved app data, including product nutrition and daily calorie adjustments. Restore validates the file, shows a summary and requires confirmation before replacing that user’s data. It does not affect other accounts, server settings or credentials. Portable backups exclude model settings and API keys and are limited to 32 MB.
+
+For a complete server backup, including accounts and server configuration, copy the raw data file as described below. The raw server file and portable user backup have different formats; the Settings importer accepts only portable Larder backups.
+
+- All data is one JSON file (`NUTRI_DATA`), including saved product nutrition, meal quantities,
+  day calorie adjustments, plans, pantry items and ratings. It uses JSON rather than SQLite.
+  It’s written atomically, so copying it while
   Larder runs is safe: `cp /var/lib/larder/larder.json backup-$(date +%F).json`.
+- Existing JSON files load the new product and day-adjustment collections automatically.
 - To update, rebuild and replace the binary (or `docker compose up -d --build`).
-  Installed phone apps pick up the new version on next launch.
+  Installed web apps pick up the new version on next launch. Native Android APKs must
+  be rebuilt and reinstalled separately; see [ANDROID.md](ANDROID.md).
 - Keep `NUTRI_JWT_SECRET` the same across updates, or everyone gets signed out.
 
 ## Environment variables
