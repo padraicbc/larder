@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The WebView loads the app from the Go server inside this app over plain
+     HTTP on loopback. Nothing leaves the phone, so cleartext is allowed for
+     127.0.0.1 only. (The Go server's own outbound calls, e.g. to Ollama on
+     your network, are made by Go and aren't affected by this file.) -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

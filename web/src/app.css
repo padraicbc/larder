@@ -1,0 +1,129 @@
+@import 'tailwindcss';
+
+@plugin 'daisyui' {
+	themes: false;
+}
+
+/* Larder: greengrocer greens, with each macro tied to a food colour —
+   beet for protein, grain for carbs, olive for fat, leaf for fiber. */
+@plugin 'daisyui/theme' {
+	name: 'larder';
+	default: true;
+	color-scheme: light;
+	--color-base-100: #f6f8f3;
+	--color-base-200: #ecf0e6;
+	--color-base-300: #d9e1d0;
+	--color-base-content: #1e2a22;
+	--color-primary: #2e5b3f;
+	--color-primary-content: #f3f8f1;
+	--color-secondary: #a23b5b;
+	--color-secondary-content: #fff5f8;
+	--color-accent: #c98e2b;
+	--color-accent-content: #2a1d05;
+	--color-neutral: #24302a;
+	--color-neutral-content: #eef3ec;
+	--color-info: #2f6f8f;
+	--color-info-content: #f2f9fc;
+	--color-success: #3f7d4a;
+	--color-success-content: #f2faf3;
+	--color-warning: #b7791f;
+	--color-warning-content: #1f1403;
+	--color-error: #b23a3a;
+	--color-error-content: #fff4f4;
+	--radius-selector: 1rem;
+	--radius-field: 0.6rem;
+	--radius-box: 1.1rem;
+	--size-selector: 0.25rem;
+	--size-field: 0.25rem;
+	--border: 1px;
+	--depth: 0;
+	--noise: 0;
+}
+
+@plugin 'daisyui/theme' {
+	name: 'larder-night';
+	color-scheme: dark;
+	--color-base-100: #161d18;
+	--color-base-200: #1d2620;
+	--color-base-300: #2b372f;
+	--color-base-content: #e2eadf;
+	--color-primary: #84bf94;
+	--color-primary-content: #0e1d13;
+	--color-secondary: #e07fa1;
+	--color-secondary-content: #2a0a16;
+	--color-accent: #e3b456;
+	--color-accent-content: #2a1d05;
+	--color-neutral: #2f3b33;
+	--color-neutral-content: #e2eadf;
+	--color-info: #7fbad6;
+	--color-info-content: #0b1a22;
+	--color-success: #84bf94;
+	--color-success-content: #0e1d13;
+	--color-warning: #e3b456;
+	--color-warning-content: #2a1d05;
+	--color-error: #e88383;
+	--color-error-content: #2a0b0b;
+	--radius-selector: 1rem;
+	--radius-field: 0.6rem;
+	--radius-box: 1.1rem;
+	--size-selector: 0.25rem;
+	--size-field: 0.25rem;
+	--border: 1px;
+	--depth: 0;
+	--noise: 0;
+}
+
+@theme {
+	/* Bundled with the app (no Google Fonts request), so they work offline and on Android. */
+	--font-sans: 'Atkinson Hyperlegible Next Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+}
+
+:root,
+[data-theme='larder'] {
+	--c-protein: #a23b5b;
+	--c-carbs: #c98e2b;
+	--c-fat: #6f7f22;
+	--c-fiber: #3f7d4a;
+}
+[data-theme='larder-night'] {
+	--c-protein: #e07fa1;
+	--c-carbs: #e3b456;
+	--c-fat: #b9c766;
+	--c-fiber: #84bf94;
+}
+
+html {
+	font-family: var(--font-sans);
+	font-size: 17px;
+}
+h1,
+h2,
+h3 {
+	font-family: var(--font-display);
+	letter-spacing: -0.01em;
+	text-wrap: balance;
+}
+.tabular {
+	/* Atkinson's tabular figures look monospaced; keep proportional ones. */
+	font-variant-numeric: proportional-nums;
+}
+/* Recipe-book leader dots between an ingredient and its amount. */
+.leader {
+	flex: 1;
+	min-width: 1rem;
+	border-bottom: 2px dotted color-mix(in oklab, currentColor 25%, transparent);
+	transform: translateY(-0.3em);
+}
+:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		transition-duration: 0.01ms !important;
+		animation-duration: 0.01ms !important;
+	}
+}

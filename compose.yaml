@@ -1,0 +1,27 @@
+# Larder + Caddy (automatic HTTPS). Set LARDER_DOMAIN and a JWT secret in .env:
+#   LARDER_DOMAIN=larder.example.com
+#   NUTRI_JWT_SECRET=<output of: openssl rand -hex 32>
+services:
+  larder:
+    build: .
+    restart: unless-stopped
+    environment:
+      NUTRI_JWT_SECRET: ${NUTRI_JWT_SECRET:?set NUTRI_JWT_SECRET in .env}
+      NUTRI_SECURE_COOKIES: "1"
+      NUTRI_TRUST_PROXY: "1"
+      NUTRI_SIGNUP: ${NUTRI_SIGNUP:-open}
+      NUTRI_LLM_API_KEY: ${NUTRI_LLM_API_KEY:-}
+    volumes:
+      - larder-data:/data
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    command: caddy reverse-proxy --from ${LARDER_DOMAIN:?set LARDER_DOMAIN in .env} --to larder:8080
+    volumes:
+      - caddy-data:/data
+
+volumes:
+  larder-data:
+  caddy-data:

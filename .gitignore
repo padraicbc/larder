@@ -1,0 +1,9 @@
+backend/data/
+backend/bin/
+web/node_modules/
+web/.svelte-kit/
+web/build/
+backend/internal/webui/dist/*
+!backend/internal/webui/dist/README.txt
+backend/mobile/preview-data/
+.env
