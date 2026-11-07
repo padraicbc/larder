@@ -28,6 +28,47 @@ export interface Profile {
 	maxPrepMins: number;
 }
 
+export interface Workout {
+	id: string;
+	date: string;
+	kind: string;
+	minutes: number;
+	calories?: number;
+	note?: string;
+}
+
+export interface Scan {
+	id?: string;
+	name: string;
+	barcode?: string;
+	ingredients: string;
+	hasNutrition: boolean;
+	basisQuantity?: number;
+	basisUnit?: 'g' | 'ml' | 'serving';
+	macros: Macros;
+	source: 'saved' | 'openfoodfacts' | 'photo';
+	productId?: string;
+	notes?: string;
+	warning?: string;
+	createdAt?: string;
+	rating?: ProductRating;
+}
+
+export interface WeightEntry {
+	date: string;
+	kg: number;
+}
+
+export interface SavedMeal {
+	id: string;
+	name: string;
+	mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+	items: MealItem[];
+	macros: Macros;
+	createdAt: string;
+	updatedAt: string;
+}
+
 export interface Ingredient {
 	name: string;
 	quantity: number;
@@ -102,9 +143,28 @@ export interface LabelEstimate extends Estimate {
 	basisQuantity: number;
 	basisUnit: 'g' | 'ml' | 'serving';
 	fromNutritionLabel: boolean;
+	barcode?: string;
+	source?: '' | 'openfoodfacts';
+}
+
+export interface RatingFactor {
+	text: string;
+	points: number;
+	why?: string;
+}
+
+export interface ProductRating {
+	rules?: number;
+	at?: string;
+	base: number;
+	provisional?: boolean;
+	score: number;
+	label: 'excellent' | 'good' | 'fair' | 'poor' | 'avoid';
+	factors: RatingFactor[];
 }
 
 export interface Product extends LabelEstimate {
+	rating?: ProductRating;
 	id: string;
 	createdAt: string;
 	updatedAt: string;
@@ -175,6 +235,7 @@ export interface LLMConfig {
 
 export interface Settings {
 	llm: LLMConfig;
+	lookup: { openFoodFacts: boolean };
 	envKeyLoaded: boolean;
 	canEdit: boolean;
 }

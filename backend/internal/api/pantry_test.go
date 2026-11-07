@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/nutrition"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
 )
 
 func TestPantryCRUD(t *testing.T) {

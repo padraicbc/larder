@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 // LLMs sometimes ignore constraints, so every generated recipe is checked

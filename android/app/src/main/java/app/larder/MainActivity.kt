@@ -1,13 +1,16 @@
 package app.larder
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -19,6 +22,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -37,6 +41,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var web: WebView
     private var pendingFiles: ValueCallback<Array<Uri>>? = null
     private var cameraPhoto: Uri? = null
+
+    // Camera permission, asked for the first time the page (barcode scanner) or the
+    // photo picker needs it. `afterCameraAnswer` runs once the user has answered.
+    private var pendingCameraRequest: PermissionRequest? = null
+    private var afterCameraAnswer: (() -> Unit)? = null
+
+    private val requestCamera =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val request = pendingCameraRequest
+            pendingCameraRequest = null
+            if (request != null) {
+                if (granted) request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE)) else request.deny()
+            }
+            val next = afterCameraAnswer
+            afterCameraAnswer = null
+            next?.invoke()
+        }
+
+    private fun hasCamera() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
     private var pendingBackupUrl: String? = null
     private var pendingBackupCookie: String? = null
@@ -172,6 +196,24 @@ class MainActivity : AppCompatActivity() {
 
     /** Makes image file inputs offer the camera and the gallery. */
     private inner class PhotoChooser : WebChromeClient() {
+        /** getUserMedia from our own page (live barcode scan): ask Android, then answer the page. */
+        override fun onPermissionRequest(request: PermissionRequest) {
+            runOnUiThread {
+                val ours = request.origin.host == "127.0.0.1"
+                val wantsVideo = request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                // Camera only: no microphone, and nothing for other sites.
+                if (!ours || !wantsVideo || request.resources.any { it != PermissionRequest.RESOURCE_VIDEO_CAPTURE }) {
+                    request.deny()
+                } else if (hasCamera()) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                } else {
+                    pendingCameraRequest?.deny()
+                    pendingCameraRequest = request
+                    requestCamera.launch(Manifest.permission.CAMERA)
+                }
+            }
+        }
+
         override fun onShowFileChooser(
             view: WebView,
             callback: ValueCallback<Array<Uri>>,
@@ -198,16 +240,28 @@ class MainActivity : AppCompatActivity() {
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.mode == FileChooserParams.MODE_OPEN_MULTIPLE)
             }
 
+            // The camera app can only be offered once we hold the camera permission (we declare it).
+            if (!hasCamera()) {
+                afterCameraAnswer = { launchImageChooser(gallery) }
+                requestCamera.launch(Manifest.permission.CAMERA)
+                return true
+            }
+            return launchImageChooser(gallery)
+        }
+
+        private fun launchImageChooser(gallery: Intent): Boolean {
             val dir = File(cacheDir, "photos").apply { mkdirs() }
             val file = File.createTempFile("fridge-", ".jpg", dir)
-            cameraPhoto = FileProvider.getUriForFile(this@MainActivity, "$packageName.photos", file)
+            val photoUri = FileProvider.getUriForFile(this@MainActivity, "$packageName.photos", file)
+            cameraPhoto = if (hasCamera()) photoUri else null
             val camera = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
-                putExtra(MediaStore.EXTRA_OUTPUT, cameraPhoto)
+                putExtra(MediaStore.EXTRA_OUTPUT, photoUri)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             }
 
             val chooser = Intent.createChooser(gallery, "Add photos").apply {
-                putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(camera))
+                // Without the permission, offer the gallery (and whatever it includes) only.
+                if (hasCamera()) putExtra(Intent.EXTRA_INITIAL_INTENTS, arrayOf(camera))
             }
             return try {
                 choosePhotos.launch(chooser)

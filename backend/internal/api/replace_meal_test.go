@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 type replacementModel struct{ reply string }

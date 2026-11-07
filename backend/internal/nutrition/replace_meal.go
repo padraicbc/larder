@@ -7,8 +7,8 @@ import (
 	"math"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 // Replacement targets account for meals the user is keeping. A replacement

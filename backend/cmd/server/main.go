@@ -11,9 +11,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/you/nutrition-app/internal/api"
-	"github.com/you/nutrition-app/internal/store"
-	"github.com/you/nutrition-app/internal/webui"
+	"github.com/padraicbc/larder/internal/api"
+	"github.com/padraicbc/larder/internal/store"
+	"github.com/padraicbc/larder/internal/webui"
 )
 
 func main() {

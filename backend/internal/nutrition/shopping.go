@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 // unit -> (base unit, multiplier)

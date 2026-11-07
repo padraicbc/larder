@@ -10,8 +10,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/you/nutrition-app/internal/auth"
-	"github.com/you/nutrition-app/internal/webui"
+	"github.com/padraicbc/larder/internal/auth"
+	"github.com/padraicbc/larder/internal/webui"
 )
 
 func init() { auth.Iterations = 1000 }

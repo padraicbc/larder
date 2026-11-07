@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func TestProtectedRoutesNeedAuth(t *testing.T) {

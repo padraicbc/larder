@@ -3,7 +3,7 @@ package nutrition
 import (
 	"testing"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func TestBMR(t *testing.T) {

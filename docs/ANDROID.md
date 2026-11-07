@@ -14,7 +14,7 @@ or Ollama on a computer on your network.
 ## How it fits together
 
 ```
-android/                     Kotlin shell: WebView + photo picker/camera
+android/                     Kotlin shell: WebView + photo picker/camera (asks for camera permission when first needed)
   app/libs/larder.aar        built by gomobile from backend/mobile
 backend/mobile/              Go package `larder`: Start(dataDir) -> sign-in URL, Stop()
 backend/internal/webui/dist  the web app, embedded into the Go code

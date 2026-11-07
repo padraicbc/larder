@@ -2,9 +2,10 @@ package nutrition
 
 import (
 	"context"
-	"github.com/you/nutrition-app/internal/llm"
 	"strings"
 	"testing"
+
+	"github.com/padraicbc/larder/internal/llm"
 )
 
 func TestReadProductLabelSourcesAndPrecision(t *testing.T) {

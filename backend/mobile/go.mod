@@ -1,8 +1,8 @@
-module github.com/you/nutrition-app/mobile
+module github.com/padraicbc/larder/mobile
 
 go 1.26.0
 
-require github.com/you/nutrition-app v0.0.0
+require github.com/padraicbc/larder v0.0.0
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
@@ -14,4 +14,4 @@ require (
 
 // The app lives one directory up; this module only adds the gomobile entry point
 // (and, at build time, golang.org/x/mobile/bind) without touching the main go.mod.
-replace github.com/you/nutrition-app => ../
+replace github.com/padraicbc/larder => ../

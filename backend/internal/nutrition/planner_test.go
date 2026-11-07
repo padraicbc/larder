@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 // scripted is a fake model that returns replies in order and records prompts.
@@ -114,5 +114,54 @@ func TestEstimateMacros(t *testing.T) {
 	}
 	if _, err := EstimateMacros(context.Background(), m, "   "); err == nil {
 		t.Error("blank text should error")
+	}
+}
+
+var oats = models.FixedMeal{
+	MealType: "Breakfast", Title: "Porridge with berries",
+	Ingredients: []models.Ingredient{{Name: "oats", Quantity: 60, Unit: "g"}},
+	Macros:      models.Macros{Calories: 400, Protein: 15},
+}
+
+func TestFixedMealsAddedToEveryDay(t *testing.T) {
+	p := models.Profile{MealsPerDay: 3, Targets: models.Macros{Calories: 2000}}
+	plan, err := GeneratePlan(context.Background(), llm.Mock{}, p, Feedback{}, nil, PlanRequest{Days: 2, FixedMeals: []models.FixedMeal{oats}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, d := range plan.Days {
+		if len(d.Meals) != 3 {
+			t.Fatalf("day %d: want 3 meals (1 fixed + 2 planned), got %d", d.Day, len(d.Meals))
+		}
+		if d.Meals[0].Title != "Porridge with berries" || d.Meals[0].MealType != "breakfast" || d.Meals[0].Servings != 1 {
+			t.Errorf("day %d: breakfast not first/normalised: %+v", d.Day, d.Meals[0])
+		}
+	}
+}
+
+func TestFixedMealsPromptAndSafety(t *testing.T) {
+	p := models.Profile{MealsPerDay: 3, Targets: models.Macros{Calories: 2000}, Allergies: []string{"oats"}}
+	_, user := BuildPlanPrompt(p, Feedback{}, nil, PlanRequest{Days: 1, FixedMeals: []models.FixedMeal{oats}})
+	for _, want := range []string{"MEALS_PER_DAY: 2", "Porridge with berries", "1600 kcal"} {
+		if !strings.Contains(user, want) {
+			t.Errorf("prompt missing %q:\n%s", want, user)
+		}
+	}
+	p = models.Profile{MealsPerDay: 1, Allergies: []string{"oats"}}
+	plan, _ := GeneratePlan(context.Background(), llm.Mock{}, p, Feedback{}, nil, PlanRequest{Days: 1, FixedMeals: []models.FixedMeal{oats}})
+	if len(plan.Days) != 1 || len(plan.Days[0].Meals) != 1 || len(plan.Days[0].Meals[0].Warnings) == 0 {
+		t.Errorf("all-fixed day should skip the model and still flag allergens: %+v", plan)
+	}
+}
+
+func TestParseQuantityAndFixedFromSaved(t *testing.T) {
+	for in, want := range map[string][2]any{"75 g": {75.0, "g"}, "75g": {75.0, "g"}, "2": {2.0, ""}, "2 biscuits": {2.0, ""}, "1 scoop": {1.0, ""}, "1.5 cups": {1.5, "cup"}, "": {1.0, ""}, "a bit": {1.0, ""}} {
+		if q, u := ParseQuantity(in); q != want[0] || u != want[1] {
+			t.Errorf("%q = %v %q, want %v", in, q, u, want)
+		}
+	}
+	f := FixedFromSaved(models.SavedMeal{Name: "Usual breakfast", Items: []models.MealItem{{Name: "Weetabix", Quantity: "2 biscuits"}, {Name: "Porridge oats", Quantity: "75 g"}}, Macros: models.Macros{Calories: 600}}, "breakfast")
+	if f.Title != "Usual breakfast" || len(f.Ingredients) != 2 || f.Ingredients[1].Quantity != 75 || f.Ingredients[1].Unit != "g" || f.Macros.Calories != 600 {
+		t.Errorf("%+v", f)
 	}
 }

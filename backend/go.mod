@@ -1,4 +1,4 @@
-module github.com/you/nutrition-app
+module github.com/padraicbc/larder
 
 go 1.24
 

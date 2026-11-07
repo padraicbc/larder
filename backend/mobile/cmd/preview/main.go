@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	larder "github.com/you/nutrition-app/mobile"
+	larder "github.com/padraicbc/larder/mobile"
 )
 
 func main() {

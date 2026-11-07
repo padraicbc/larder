@@ -1,9 +1,10 @@
 package api
 
 import (
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/nutrition"
 	"testing"
+
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
 )
 
 func TestProductLabelEndpoint(t *testing.T) {

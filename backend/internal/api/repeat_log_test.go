@@ -1,9 +1,10 @@
 package api
 
 import (
-	"github.com/you/nutrition-app/internal/models"
 	"testing"
 	"time"
+
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func TestRepeatLogCopiesSavedTotals(t *testing.T) {

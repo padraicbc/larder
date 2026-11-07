@@ -1,8 +1,9 @@
 package api
 
 import (
-	"github.com/you/nutrition-app/internal/nutrition"
 	"net/http"
+
+	"github.com/padraicbc/larder/internal/nutrition"
 )
 
 func (s *Server) estimatePhoto(w http.ResponseWriter, r *http.Request) {

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func replacementFixture(name string, macros models.Macros) models.Recipe {

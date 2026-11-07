@@ -4,6 +4,11 @@
     <!-- The Go server talks to your model (cloud API or Ollama on your network). -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Live barcode scanning in the web view. Asked for when first needed; the app
+         works without it (photos and typing the digits still do). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

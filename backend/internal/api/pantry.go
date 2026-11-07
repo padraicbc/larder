@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/nutrition"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 const (

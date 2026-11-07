@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 // Things nearly every kitchen has. They never count as "missing".

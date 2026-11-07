@@ -1,7 +1,11 @@
 // Package models holds the domain types shared by the store, API and LLM layers.
 package models
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+)
 
 // Macros are always per serving unless stated otherwise.
 type Macros struct {
@@ -42,6 +46,47 @@ type Profile struct {
 	MealsPerDay   int      `json:"mealsPerDay"`
 	HouseholdSize int      `json:"householdSize"`
 	MaxPrepMins   int      `json:"maxPrepMins"`
+}
+
+// SavedMeal is a named group of foods (e.g. 2 Weetabix + oats + protein
+// powder) that can be logged again in one go or fixed into a meal plan slot.
+type SavedMeal struct {
+	ID        string     `json:"id"`
+	Name      string     `json:"name"`
+	MealType  string     `json:"mealType"` // usual slot: breakfast | lunch | dinner | snack
+	Items     []MealItem `json:"items"`
+	Macros    Macros     `json:"macros"` // total for one serving of the whole meal
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+}
+
+// WeightEntry is one body-weight reading; there is at most one per day.
+type WeightEntry struct {
+	Date      string    `json:"date"` // YYYY-MM-DD in the user's local day
+	Kg        float64   `json:"kg"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// Workout is one training session on a day (several per day are allowed).
+type Workout struct {
+	ID        string    `json:"id"`
+	Date      string    `json:"date"` // YYYY-MM-DD in the user's local day
+	Kind      string    `json:"kind"` // e.g. Running, Weights
+	Minutes   int       `json:"minutes"`
+	Calories  int       `json:"calories,omitempty"` // optional, as estimated by a tracker; 0 = not recorded
+	Note      string    `json:"note,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// DefaultWorkoutKinds are always offered; users add their own on top.
+var DefaultWorkoutKinds = []string{"Running", "Weights", "Walking", "Cycling", "Swimming", "HIIT", "Yoga", "Football"}
+
+// FixedMeal is a meal slot with a set recipe in one plan. Macros are per serving.
+type FixedMeal struct {
+	MealType    string       `json:"mealType"`
+	Title       string       `json:"title"`
+	Ingredients []Ingredient `json:"ingredients"`
+	Macros      Macros       `json:"macros"`
 }
 
 func DefaultProfile() Profile {
@@ -133,6 +178,100 @@ type Product struct {
 	Notes              string    `json:"notes"`
 	CreatedAt          time.Time `json:"createdAt"`
 	UpdatedAt          time.Time `json:"updatedAt"`
+	Barcode            string    `json:"barcode,omitempty"` // EAN/UPC digits, checksum-verified
+	Source             string    `json:"source,omitempty"`  // "" (label/manual) | "openfoodfacts"
+	// Rating is computed on the fly from Ingredients and Macros; never stored.
+	Rating *ProductRating `json:"rating,omitempty"`
+}
+
+// LookupSettings control optional online barcode lookups (server-wide, off by default).
+type LookupSettings struct {
+	OpenFoodFacts bool `json:"openFoodFacts"`
+}
+
+// Scan is something checked in the shop: found by barcode or read from a photo
+// of its ingredients. Nutrition is optional; a rating needs only ingredients.
+type Scan struct {
+	ID            string         `json:"id,omitempty"` // set once saved
+	Name          string         `json:"name"`
+	Barcode       string         `json:"barcode,omitempty"`
+	Ingredients   string         `json:"ingredients"`
+	HasNutrition  bool           `json:"hasNutrition"`
+	BasisQuantity float64        `json:"basisQuantity,omitempty"` // nutrition is per this much
+	BasisUnit     string         `json:"basisUnit,omitempty"`     // g | ml | serving
+	Macros        Macros         `json:"macros"`
+	Source        string         `json:"source"`              // saved | openfoodfacts | photo
+	ProductID     string         `json:"productId,omitempty"` // set when it is already one of your products
+	Notes         string         `json:"notes,omitempty"`
+	Warning       string         `json:"warning,omitempty"` // ingredients missing or not in English, so the rating is provisional
+	CreatedAt     time.Time      `json:"createdAt"`
+	Rating        *ProductRating `json:"rating,omitempty"` // computed, never stored
+}
+
+// ProductRating scores a product 0–100 (higher is better) with the reasons why.
+type ProductRating struct {
+	Rules int `json:"rules"` // which version of the rating rules produced this (see nutrition.RatingRules)
+	// At is when this rating was calculated. It changes on every request because
+	// ratings are never stored; they are worked out each time they are shown.
+	At   time.Time `json:"at"`
+	Base int       `json:"base"` // every product starts here before points are added or removed
+	// Provisional means the ingredients weren't available or couldn't be fully checked,
+	// so additives may have been missed. Get the ingredients to firm the rating up.
+	Provisional bool           `json:"provisional,omitempty"`
+	Score       int            `json:"score"`
+	Label       string         `json:"label"` // excellent | good | fair | poor | avoid
+	Factors     []RatingFactor `json:"factors"`
+}
+
+// RatingSettings are one person's tweaks to the rating rules. Empty means the
+// defaults. Points are keyed by rule (see nutrition.RuleCatalogue): a key that is
+// present replaces that rule's default, and 0 switches the rule off.
+type RatingSettings struct {
+	Points map[string]int `json:"points,omitempty"`
+	Custom []CustomRule   `json:"custom,omitempty"`
+}
+
+// Validate checks the limits on a person's tweaks. known, if given, says which rule keys exist.
+func (r RatingSettings) Validate(known func(string) bool) error {
+	for k, v := range r.Points {
+		if known != nil && !known(k) {
+			return fmt.Errorf("unknown rule %q", k)
+		}
+		min, max := -50, 50
+		if k == "base" {
+			min, max = 0, 100
+		}
+		if v < min || v > max {
+			return fmt.Errorf("points for %q must be between %d and %d", k, min, max)
+		}
+	}
+	if len(r.Custom) > 50 {
+		return fmt.Errorf("at most 50 rules of your own")
+	}
+	for _, c := range r.Custom {
+		m := strings.TrimSpace(c.Match)
+		if n := len([]rune(m)); n < 2 || n > 60 {
+			return fmt.Errorf("a rule's word or phrase must be 2 to 60 characters")
+		}
+		if c.Points < -50 || c.Points > 50 || c.Points == 0 {
+			return fmt.Errorf("points for %q must be between -50 and 50, and not 0", m)
+		}
+	}
+	return nil
+}
+
+// CustomRule adds points whenever Match appears as a word or phrase in the ingredients.
+type CustomRule struct {
+	Match  string `json:"match"`
+	Points int    `json:"points"`
+}
+
+// RatingFactor is one thing that moved the score (negative = worse).
+type RatingFactor struct {
+	Key    string `json:"key,omitempty"` // which rule this was, so it can be tweaked in Settings
+	Text   string `json:"text"`
+	Points int    `json:"points"`
+	Why    string `json:"why,omitempty"` // plain-language reason this matters
 }
 
 type DayAdjustment struct {

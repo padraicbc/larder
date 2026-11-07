@@ -158,6 +158,12 @@ func (m Mock) CompleteWithImages(ctx context.Context, system, user string, image
 	if strings.Contains(system+user, "TASK: product_label") {
 		return `{"name":"Rolled oats (demo)","ingredients":"Wholegrain rolled oats","basisQuantity":100,"basisUnit":"g","fromNutritionLabel":true,"macros":{"calories":380,"protein":13,"carbs":60,"fat":7,"fiber":10},"confidence":"low","notes":"Demo data; configure a vision model to read real labels."}`, nil
 	}
+	if strings.Contains(system+user, "TASK: ingredients_photo") {
+		return `{"name":"Chocolate hoops (demo)","barcode":"","ingredients":"Wholegrain wheat, sugar, glucose-fructose syrup, cocoa powder, palm oil, colour (E150d), flavouring, emulsifier (E471), salt, vitamin C (E300)","hasNutrition":false,"macros":{},"notes":"Demo data; configure a vision model to read real labels."}`, nil
+	}
+	if strings.Contains(system+user, "TASK: barcode_photo") {
+		return `{"barcode":""}`, nil // demo mode has no vision model to read digits
+	}
 	if strings.Contains(system+user, "TASK: meal_photo") {
 		return `{"name":"Eggs on toast","items":[{"name":"eggs","quantity":"2 large"},{"name":"toast","quantity":"1 slice"}],"macros":{"calories":320,"protein":19,"carbs":22,"fat":17,"fiber":3},"confidence":"medium","notes":"Demo estimate. Check portions before logging."}`, nil
 	}

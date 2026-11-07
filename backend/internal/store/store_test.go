@@ -1,13 +1,15 @@
 package store
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 const uid = "u1"
@@ -266,5 +268,54 @@ func TestProductsPersistWithoutLogs(t *testing.T) {
 	}
 	if len(s.Products("another-user")) != 0 {
 		t.Fatal("another user's products visible")
+	}
+}
+
+// Ratings are computed on every view and must never be written to disk, even if a
+// caller hands one in; a stale one found in an older file or a backup is dropped.
+func TestRatingsAreNeverStored(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := &models.ProductRating{Score: 82, Label: "good"}
+	p, err := s.PutProduct("u1", models.Product{Name: "Pizza", BasisQuantity: 100, BasisUnit: "g", Ingredients: "Flour", Rating: stale}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.PutScan("u1", models.Scan{Name: "Scan", Ingredients: "Oats", Rating: stale}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if p.Rating != nil {
+		t.Errorf("PutProduct returned a rating: %+v", p.Rating)
+	}
+	raw, _ := os.ReadFile(path)
+	if strings.Contains(string(raw), `"rating"`) || strings.Contains(string(raw), `"score"`) {
+		t.Fatalf("a rating reached the data file:\n%s", raw)
+	}
+
+	// An older file that did contain one: loaded without it.
+	old := strings.Replace(string(raw), `"name": "Pizza",`, `"name": "Pizza", "rating": {"score": 82, "label": "good"},`, 1)
+	if old == string(raw) {
+		t.Fatal("test setup: could not inject a stale rating")
+	}
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, got := range s2.Products("u1") {
+		if got.Rating != nil {
+			t.Errorf("stale rating survived loading: %+v", got.Rating)
+		}
+	}
+	// ...and a backup never carries one either.
+	b, _ := s2.ExportBackup("u1", time.Now())
+	out, _ := json.Marshal(b)
+	if strings.Contains(string(out), `"rating"`) {
+		t.Errorf("backup contains a rating: %s", out)
 	}
 }

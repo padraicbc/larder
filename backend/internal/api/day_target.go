@@ -5,8 +5,8 @@ import (
 	"math"
 	"net/http"
 
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 func adjustedTargets(base models.Macros, adjustment models.DayAdjustment) models.Macros {

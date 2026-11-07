@@ -50,5 +50,8 @@ export async function upload<T = unknown>(path: string, form: FormData): Promise
 	return handle<T>(res, path);
 }
 
+/** Server messages start lowercase ("give the meal a name"); show them as sentences. */
+export const sentence = (s: string) => (s ? s[0].toLocaleUpperCase() + s.slice(1) : s);
+
 export const errorText = (e: unknown) =>
-	e instanceof Error ? e.message : 'Something went wrong. Check that the Go server is running.';
+	e instanceof Error ? sentence(e.message) : 'Something went wrong. Check that the Go server is running.';

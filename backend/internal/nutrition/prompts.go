@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 const planSystem = `You are a practical meal planner with dietitian-level knowledge of nutrition.
@@ -37,6 +37,10 @@ const planSchema = `{
 type PlanRequest struct {
 	Days  int    `json:"days"`
 	Notes string `json:"notes"`
+	// Fixed maps a slot (breakfast, lunch, dinner, snack) to a saved meal ID.
+	Fixed map[string]string `json:"fixed,omitempty"`
+	// FixedMeals are the resolved saved meals for those slots (set by the API).
+	FixedMeals []models.FixedMeal `json:"-"`
 }
 
 func orNone(s []string) string {
@@ -52,14 +56,33 @@ func BuildPlanPrompt(p models.Profile, fb Feedback, recentTitles []string, req P
 	if meals <= 0 {
 		meals = 3
 	}
+	fixed := FixedMeals(req)
+	meals -= len(fixed)
+	if meals < 1 {
+		meals = 1
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "TASK: meal_plan\nDAYS: %d\nMEALS_PER_DAY: %d\n\n", req.Days, meals)
 
 	t := p.Targets
-	fmt.Fprintf(&b, "Daily targets (per person): %.0f kcal, %.0fg protein, %.0fg carbs, %.0fg fat, %.0fg fiber.\n",
-		t.Calories, t.Protein, t.Carbs, t.Fat, t.Fiber)
+	if len(fixed) > 0 {
+		var used models.Macros
+		b.WriteString("FIXED MEALS (already decided, eaten every day; do NOT include them in your answer):\n")
+		for _, f := range fixed {
+			used = used.Add(f.Macros)
+			fmt.Fprintf(&b, "- %s: %s (%.0f kcal, %.0fg protein, %.0fg carbs, %.0fg fat, %.0fg fiber)\n",
+				f.MealType, f.Title, f.Macros.Calories, f.Macros.Protein, f.Macros.Carbs, f.Macros.Fat, f.Macros.Fiber)
+		}
+		fmt.Fprintf(&b, "Plan ONLY the other %d meal(s) per day, and size them for what is left of the daily targets.\n\n", meals)
+		t = models.Macros{
+			Calories: max(t.Calories-used.Calories, 0), Protein: max(t.Protein-used.Protein, 0),
+			Carbs: max(t.Carbs-used.Carbs, 0), Fat: max(t.Fat-used.Fat, 0), Fiber: max(t.Fiber-used.Fiber, 0),
+		}
+	}
+	fmt.Fprintf(&b, "%s targets (per person): %.0f kcal, %.0fg protein, %.0fg carbs, %.0fg fat, %.0fg fiber.\n",
+		map[bool]string{true: "Remaining daily", false: "Daily"}[len(fixed) > 0], t.Calories, t.Protein, t.Carbs, t.Fat, t.Fiber)
 	b.WriteString("Each day's meals (one serving each) should land within ~10% of these targets.\n")
-	if meals >= 4 {
+	if meals+len(fixed) >= 4 {
 		b.WriteString("Meals 4+ are snacks.\n")
 	}
 	fmt.Fprintf(&b, "Goal: %s weight.\n\n", orDefault(p.Goal, "maintain"))

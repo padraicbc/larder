@@ -6,6 +6,7 @@
 	import { toast } from '#lib/toast.svelte.ts';
 	import { install, promptInstall } from '#lib/install.svelte.ts';
 	import type { LLMConfig } from '#lib/types.ts';
+	import RatingRules from '#lib/components/RatingRules.svelte';
 
 	let { data } = $props();
 
@@ -13,6 +14,11 @@
 	let cfg = $state<LLMConfig>(structuredClone(untrack(() => data.settings.llm)));
 	$effect(() => {
 		cfg = structuredClone(data.settings.llm);
+	});
+
+	let lookup = $state({ ...untrack(() => data.settings.lookup) });
+	$effect(() => {
+		lookup = { ...data.settings.lookup };
 	});
 
 	// Presets just fill in provider + base URL; everything stays editable.
@@ -55,7 +61,7 @@
 	async function save() {
 		saving = true;
 		try {
-			await api('/settings', { method: 'PUT', body: { llm: cfg } });
+			await api('/settings', { method: 'PUT', body: { llm: cfg, lookup } });
 			await invalidateAll();
 			toast('Settings saved');
 		} catch (e) {
@@ -215,6 +221,19 @@
 		</div>
 	{/if}
 
+	<div class="border-base-300 mt-8 border-t pt-6">
+		<h3 class="text-lg font-bold">Barcode lookup</h3>
+		<label class="mt-3 flex cursor-pointer items-start gap-3">
+			<input type="checkbox" class="toggle toggle-primary mt-0.5" bind:checked={lookup.openFoodFacts} />
+			<span>
+				<span class="block text-sm font-semibold">Look up barcodes on Open Food Facts</span>
+				<span class="text-base-content/60 text-xs">
+					Off by default. When on, scanning or typing a barcode that isn’t already in your saved products asks openfoodfacts.org for its name, ingredients and nutrition. Only the barcode digits are sent. The data is community-edited, so check it against the pack. Saved products and label photos never use the internet for this.
+				</span>
+			</span>
+		</label>
+	</div>
+
 	{#if result}
 		<div role="status" class="alert alert-soft mt-5 {result.ok ? 'alert-success' : 'alert-error'}">
 			<span class="break-all">{result.text}</span>
@@ -229,6 +248,8 @@
 	</div>
 	</fieldset>
 </section>
+
+<RatingRules />
 
 <section class="mt-12 max-w-3xl">
 	<h2 class="text-xl font-bold">Backup and restore</h2>

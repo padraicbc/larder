@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 )
 
@@ -28,6 +29,10 @@ type BackupSummary struct {
 	Pantry         int       `json:"pantry"`
 	Ratings        int       `json:"ratings"`
 	DayAdjustments int       `json:"dayAdjustments"`
+	Meals          int       `json:"meals"`
+	Weights        int       `json:"weights"`
+	Workouts       int       `json:"workouts"`
+	Scans          int       `json:"scans"`
 }
 
 func (s *Store) ExportBackup(uid string, now time.Time) (Backup, error) {
@@ -42,6 +47,7 @@ func (s *Store) ExportBackup(uid string, now time.Time) (Backup, error) {
 	if err = json.Unmarshal(data, &u); err != nil {
 		return Backup{}, err
 	}
+	u.stripRatings()
 	return Backup{Format: "larder-backup", Version: BackupVersion, ExportedAt: now, Data: &u}, nil
 }
 
@@ -120,6 +126,29 @@ func ReadBackup(reader io.Reader) (Backup, error) {
 			return b, errors.New("backup contains an invalid product")
 		}
 	}
+	for id, m := range b.Data.Meals {
+		if id == "" || m.ID != id || strings.TrimSpace(m.Name) == "" {
+			return b, errors.New("backup contains an invalid saved meal")
+		}
+	}
+	if err := b.Data.RatingRules.Validate(nil); err != nil {
+		return b, errors.New("backup has invalid rating rules: " + err.Error())
+	}
+	for id, sc := range b.Data.Scans {
+		if id == "" || sc.ID != id || strings.TrimSpace(sc.Name) == "" {
+			return b, errors.New("backup contains an invalid scan")
+		}
+	}
+	for id, w := range b.Data.Workouts {
+		if id == "" || w.ID != id || strings.TrimSpace(w.Kind) == "" || w.Minutes < 1 || w.Minutes > 1440 || w.Calories < 0 || w.Calories > 20000 {
+			return b, errors.New("backup contains an invalid workout")
+		}
+	}
+	for date, w := range b.Data.Weights {
+		if date == "" || w.Date != date || !(w.Kg > 0) || w.Kg > 1000 {
+			return b, errors.New("backup contains an invalid weight entry")
+		}
+	}
 	for id, p := range b.Data.Pantry {
 		if id == "" || p.ID != id {
 			return b, errors.New("backup contains an invalid pantry item")
@@ -130,7 +159,7 @@ func ReadBackup(reader io.Reader) (Backup, error) {
 
 func (b Backup) Summary() BackupSummary {
 	u := b.Data
-	return BackupSummary{ExportedAt: b.ExportedAt, Recipes: len(u.Recipes), Plans: len(u.Plans), Logs: len(u.Log), Products: len(u.Products), Pantry: len(u.Pantry), Ratings: len(u.Ratings), DayAdjustments: len(u.DayAdjustments)}
+	return BackupSummary{ExportedAt: b.ExportedAt, Recipes: len(u.Recipes), Plans: len(u.Plans), Logs: len(u.Log), Products: len(u.Products), Pantry: len(u.Pantry), Ratings: len(u.Ratings), DayAdjustments: len(u.DayAdjustments), Meals: len(u.Meals), Weights: len(u.Weights), Workouts: len(u.Workouts), Scans: len(u.Scans)}
 }
 
 func (s *Store) RestoreBackup(uid string, b Backup) error {

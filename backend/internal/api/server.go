@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/you/nutrition-app/internal/auth"
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/nutrition"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/auth"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 type Server struct {
@@ -29,6 +29,10 @@ type Server struct {
 	// NewLLM is swappable so tests can inject a fake model.
 	NewLLM func(llm.Config) (llm.Client, error)
 	Now    func() time.Time
+
+	// Barcode lookups (Open Food Facts). Tests point OFFBase at a fake server.
+	OFFBase string
+	HTTP    *http.Client
 
 	Tokens        *auth.Tokens
 	Limiter       *auth.Limiter
@@ -51,6 +55,7 @@ func New(s *store.Store, jwtSecret []byte) *Server {
 		Store:      s,
 		NewLLM:     llm.New,
 		Now:        time.Now,
+		HTTP:       &http.Client{Timeout: 8 * time.Second},
 		Tokens:     auth.NewTokens(jwtSecret, 30*24*time.Hour),
 		Limiter:    auth.NewLimiter(5, 15*time.Minute),
 		SignupOpen: true,
@@ -86,12 +91,37 @@ func (s *Server) Handler() http.Handler {
 	protected("GET /api/products", s.listProducts)
 	protected("POST /api/products", s.saveProduct)
 	protected("DELETE /api/products/{id}", s.deleteProduct)
+	protected("PUT /api/products/{id}/ingredients", s.setProductIngredients)
+	protected("GET /api/products/lookup/{barcode}", s.lookupBarcode)
+	protected("POST /api/products/barcode-photo", s.readBarcodePhoto)
 	protected("GET /api/log", s.getLog)
 	protected("PUT /api/log/target", s.putDayTarget)
 	protected("GET /api/log/history", s.getHistory)
 	protected("GET /api/log/recent", s.recentLogs)
 	protected("POST /api/log/{id}/repeat", s.repeatLog)
 	protected("POST /api/log", s.addLog)
+	protected("GET /api/rating-settings", s.getRatingSettings)
+	protected("PUT /api/rating-settings", s.putRatingSettings)
+	protected("GET /api/workouts", s.listWorkouts)
+	protected("POST /api/workouts", s.addWorkout)
+	protected("DELETE /api/workouts/{id}", s.deleteWorkout)
+	protected("GET /api/workout-kinds", s.listWorkoutKinds)
+	protected("DELETE /api/workout-kinds/{name}", s.deleteWorkoutKind)
+	protected("GET /api/scan/barcode/{barcode}", s.scanBarcode)
+	protected("POST /api/scan/ingredients", s.scanIngredients)
+	protected("POST /api/scan/rate", s.rateScan)
+	protected("GET /api/scan/search", s.searchScans)
+	protected("GET /api/scans", s.listScans)
+	protected("POST /api/scans", s.saveScan)
+	protected("DELETE /api/scans/{id}", s.deleteScan)
+	protected("GET /api/weight", s.listWeights)
+	protected("PUT /api/weight", s.putWeight)
+	protected("DELETE /api/weight/{date}", s.deleteWeight)
+	protected("GET /api/meals", s.listMeals)
+	protected("POST /api/meals/group", s.groupMeal)
+	protected("PUT /api/meals/{id}", s.updateMeal)
+	protected("DELETE /api/meals/{id}", s.deleteMeal)
+	protected("POST /api/meals/{id}/log", s.logMeal)
 	protected("POST /api/log/estimate", s.estimate)
 	protected("POST /api/log/photo", s.estimatePhoto)
 	protected("POST /api/log/label", s.readProductLabel)
@@ -252,6 +282,7 @@ func (s *Server) calcTargets(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"llm":          s.Store.LLMConfig().Masked(),
+		"lookup":       s.Store.Lookup(),
 		"envKeyLoaded": s.EnvAPIKey != "",
 		"canEdit":      currentUser(r).Admin,
 	})
@@ -267,7 +298,8 @@ func (s *Server) incomingConfig(c llm.Config) llm.Config {
 
 func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		LLM llm.Config `json:"llm"`
+		LLM    llm.Config             `json:"llm"`
+		Lookup *models.LookupSettings `json:"lookup"`
 	}
 	if !decode(w, r, &body) {
 		return
@@ -281,7 +313,13 @@ func (s *Server) putSettings(w http.ResponseWriter, r *http.Request) {
 		storeErr(w, err)
 		return
 	}
-	writeJSON(w, 200, map[string]any{"llm": c.Masked(), "envKeyLoaded": s.EnvAPIKey != "", "canEdit": true})
+	if body.Lookup != nil {
+		if err := s.Store.SetLookup(*body.Lookup); err != nil {
+			storeErr(w, err)
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"llm": c.Masked(), "lookup": s.Store.Lookup(), "envKeyLoaded": s.EnvAPIKey != "", "canEdit": true})
 }
 
 func withEnvKey(c llm.Config, env string) llm.Config {
@@ -634,6 +672,18 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	profile := s.Store.Profile(uid)
+	for slot, id := range req.Fixed {
+		if !validMealType(slot) {
+			writeErr(w, 400, "choose breakfast, lunch, dinner or snack for fixed meals")
+			return
+		}
+		m, err := s.Store.Meal(uid, id)
+		if err != nil {
+			writeErr(w, 400, "a meal you picked no longer exists; refresh and choose again")
+			return
+		}
+		req.FixedMeals = append(req.FixedMeals, nutrition.FixedFromSaved(m, slot))
+	}
 	fb := nutrition.Summarize(s.Store.Recipes(uid), s.Store.Ratings(uid))
 	gen, err := nutrition.GeneratePlan(r.Context(), c, profile, fb, s.recentTitles(uid, 20), req)
 	if err != nil {

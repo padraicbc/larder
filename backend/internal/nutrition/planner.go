@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 type GeneratedDay struct {
@@ -33,6 +33,15 @@ func GeneratePlan(ctx context.Context, c llm.Client, p models.Profile, fb Feedba
 
 	var plan GeneratedPlan
 	var problems []string
+	// Every meal is fixed: nothing for the model to plan.
+	if len(FixedMeals(req)) >= max(p.MealsPerDay, 1) {
+		for i := 1; i <= req.Days; i++ {
+			plan.Days = append(plan.Days, GeneratedDay{Day: i})
+		}
+		addFixedMeals(&plan, p, FixedMeals(req), req.Days)
+		normalize(&plan)
+		return plan, nil
+	}
 	for attempt := 1; attempt <= MaxAttempts; attempt++ {
 		plan = GeneratedPlan{}
 		if err := llm.CompleteJSON(ctx, c, system, user, &plan); err != nil {
@@ -51,6 +60,7 @@ func GeneratePlan(ctx context.Context, c llm.Client, p models.Profile, fb Feedba
 		}
 		user += BuildFixPrompt(problems)
 	}
+	addFixedMeals(&plan, p, FixedMeals(req), req.Days)
 	normalize(&plan)
 	return plan, nil
 }

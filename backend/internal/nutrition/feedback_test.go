@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func feedbackFixture() (map[string]models.Recipe, []models.Rating) {

@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 // Recent meals use the latest saved portions and nutrition for each meal name.

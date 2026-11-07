@@ -11,6 +11,20 @@
 
 	let { children, data } = $props();
 
+	// An open <dialog> lives in the browser's top layer and covers normal page content, so
+	// toasts are a popover too and are re-shown on every new toast to land above any dialog.
+	let toastBox = $state<HTMLElement>();
+	$effect(() => {
+		if (!toastBox) return;
+		const count = toasts.length;
+		try {
+			toastBox.hidePopover();
+			if (count) toastBox.showPopover();
+		} catch {
+			/* popover unsupported: toasts stay in the normal layer */
+		}
+	});
+
 	// Desktop sidebar shows everything; the mobile dock has five slots, so
 	// Settings lives behind Profile there.
 	const NAV = [
@@ -18,6 +32,11 @@
 		{ href: '/plans', label: 'Plans', icon: 'plans', dock: true },
 		{ href: '/pantry', label: 'Pantry', icon: 'pantry', dock: true },
 		{ href: '/recipes', label: 'Recipes', icon: 'recipes', dock: true },
+		{ href: '/scan', label: 'Shop check', icon: 'camera', dock: false },
+		{ href: '/workouts', label: 'Workouts', icon: 'plans', dock: false },
+		{ href: '/weight', label: 'Weight', icon: 'profile', dock: false },
+		{ href: '/meals', label: 'Meals', icon: 'pan', dock: false },
+		{ href: '/products', label: 'Products', icon: 'cart', dock: false },
 		{ href: '/profile', label: 'Profile', icon: 'profile', dock: true },
 		{ href: '/settings', label: 'Settings', icon: 'settings', dock: false }
 	] as const;
@@ -100,7 +119,7 @@
 	</div>
 {/if}
 
-<div class="toast toast-end toast-top z-50" aria-live="polite">
+<div bind:this={toastBox} popover="manual" class="toast z-50 m-0 overflow-visible border-0 bg-transparent p-0" style="inset: 1rem 1rem auto auto" aria-live="polite">
 	{#each toasts as t (t.id)}
 		<div class="alert {t.kind === 'error' ? 'alert-error' : t.kind === 'info' ? 'alert-info' : 'alert-success'} shadow-lg">
 			<span>{t.text}</span>

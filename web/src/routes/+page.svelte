@@ -3,10 +3,13 @@
 	import { page } from '$app/state';
 	import { api, upload, errorText } from '#lib/api.ts';
 	import { addDays, cap, friendlyDate, longDate, ratio, round, todayISO } from '#lib/format.ts';
+	import RatingBadge from '#lib/components/RatingBadge.svelte';
+	import BarcodeField from '#lib/components/BarcodeField.svelte';
+	import { lookupBarcode } from '#lib/barcode.ts';
 	import { labelPortionMacros, validLabelPortion } from '#lib/product-label.ts';
 	import { shrinkImage } from '#lib/images.ts';
 	import { toast } from '#lib/toast.svelte.ts';
-	import { MEAL_TYPES, emptyMacros, type Estimate, type LabelEstimate, type Product, type PhotoEstimate, type MealItem, type LogEntry, type MacroKey, type Macros, type MealType } from '#lib/types.ts';
+	import { MEAL_TYPES, emptyMacros, type Estimate, type LabelEstimate, type Product, type SavedMeal, type ProductRating, type PhotoEstimate, type MealItem, type LogEntry, type MacroKey, type Macros, type MealType } from '#lib/types.ts';
 	import MacroRings from '#lib/components/MacroRings.svelte';
 	import MacroBars from '#lib/components/MacroBars.svelte';
 	import MacroLine from '#lib/components/MacroLine.svelte';
@@ -17,6 +20,8 @@
 
 	const today = todayISO();
 	const isToday = $derived(data.date === today);
+	const burned = $derived(data.workouts.reduce((n, w) => n + (w.calories ?? 0), 0));
+	const workoutMins = $derived(data.workouts.reduce((n, w) => n + w.minutes, 0));
 	const byMeal = $derived(
 		MEAL_TYPES.map((t) => [t, data.day.entries.filter((e) => e.mealType === t)] as [MealType, LogEntry[]])
 	);
@@ -83,12 +88,15 @@
 	let labelAmount = $state(0);
 	let savedProductId = $state('');
 	let savedProductSnapshot = $state('');
+	let savedRating = $state<ProductRating | null>(null);
+	const RATING_CLASS = { excellent: 'badge-success', good: 'badge-success badge-soft', fair: 'badge-warning', poor: 'badge-error badge-soft', avoid: 'badge-error' } as const;
 	let productSearch = $state('');
 	let savingProduct = $state(false);
 	const productSnapshot = $derived(labelResult ? JSON.stringify({ ...labelResult, name: name.trim() }) : '');
 	const productChanged = $derived(productSnapshot !== savedProductSnapshot);
+	const shownRating = $derived(savedProductId && !productChanged ? savedRating : null);
 	const productValid = $derived(!!name.trim() && !!labelResult && validLabelPortion(labelResult, labelResult.basisQuantity));
-	const matchingProducts = $derived(data.products.filter((product) => product.name.toLowerCase().includes(productSearch.toLowerCase())));
+	const matchingProducts = $derived(data.products.filter((product) => (product.name + ' ' + (product.barcode ?? '')).toLowerCase().includes(productSearch.toLowerCase())));
 
 	function useProduct(product: Product) {
 		labelResult = { ...product, macros: { ...product.macros } };
@@ -97,7 +105,37 @@
 		labelAmount = 0;
 		servings = 1;
 		savedProductId = product.id;
+		savedRating = product.rating ?? null;
 		savedProductSnapshot = JSON.stringify({ ...labelResult, name: name.trim() });
+	}
+
+	let barcodeBusy = $state(false);
+	let barcodeMsg = $state('');
+	async function findByBarcode(code: string) {
+		barcodeBusy = true;
+		barcodeMsg = '';
+		try {
+			const found = await lookupBarcode(code);
+			if (found.source === 'saved') {
+				useProduct(found.product);
+				return;
+			}
+			const result = found.product;
+			labelResult = result;
+			labelAmount = 0;
+			estimate = result;
+			name = result.name;
+			servings = 1;
+			savedProductId = '';
+			savedProductSnapshot = '';
+			savedRating = null;
+			await persistProduct(); // keep it in Products so it's found offline next time
+			toast('Found on Open Food Facts and saved to Products. Check the values, then enter how much you ate.', 'info');
+		} catch (err) {
+			barcodeMsg = errorText(err);
+		} finally {
+			barcodeBusy = false;
+		}
 	}
 
 	async function persistProduct() {
@@ -105,6 +143,7 @@
 		if (savedProductId && !productChanged) return;
 		const saved = await api<Product>('/products', { body: { ...labelResult, id: savedProductId, name: name.trim() } });
 		savedProductId = saved.id;
+		savedRating = saved.rating ?? null;
 		savedProductSnapshot = JSON.stringify({ ...labelResult, name: name.trim() });
 	}
 
@@ -159,6 +198,8 @@
 				estimate = result;
 				name = result.name;
 				servings = 1;
+				const known = result.barcode && data.products.find((p) => p.barcode === result.barcode);
+				if (known) toast(`This barcode is already saved as ${known.name}. Saving will update it.`, 'info');
 			} else {
 				const result = await upload<PhotoEstimate>('/log/photo', form);
 				mealItems = result.items;
@@ -222,6 +263,49 @@
 			toast(errorText(err), 'error');
 		} finally {
 			repeating = false;
+		}
+	}
+
+	const matchingMeals = $derived(data.meals.filter((m) => m.name.toLowerCase().includes(recentSearch.toLowerCase())));
+	async function logSavedMeal(meal: SavedMeal) {
+		if (repeating || busy) return;
+		repeating = true;
+		try {
+			await api(`/meals/${meal.id}/log`, { body: { date: data.date, mealType, servings } });
+			if (dialog?.open) dialog.close();
+			await invalidateAll();
+			toast(`Logged ${meal.name}`);
+		} catch (err) {
+			toast(errorText(err), 'error');
+		} finally {
+			repeating = false;
+		}
+	}
+
+	// ---- group several logged foods into one named, reusable meal ----
+	let groupType = $state<MealType | null>(null);
+	let picked = $state<string[]>([]);
+	let groupName = $state('');
+	let groupMerge = $state(true);
+	let grouping = $state(false);
+	function startGroup(type: MealType) {
+		groupType = type;
+		picked = [];
+		groupName = '';
+		groupMerge = true;
+	}
+	async function saveGroup() {
+		if (!groupType || !picked.length || !groupName.trim() || grouping) return;
+		grouping = true;
+		try {
+			await api('/meals/group', { body: { name: groupName.trim(), mealType: groupType, entryIds: picked, merge: groupMerge } });
+			toast(`Saved “${groupName.trim()}”. Find it under Log food → Recent.`);
+			groupType = null;
+			await invalidateAll();
+		} catch (err) {
+			toast(errorText(err), 'error');
+		} finally {
+			grouping = false;
 		}
 	}
 
@@ -338,6 +422,13 @@
 	<Icon name="plus" />Log food
 </button>
 
+<div class="mt-3 flex gap-2 lg:hidden">
+	<a class="btn btn-sm btn-soft" href="/scan">Shop check</a>
+	<a class="btn btn-sm btn-soft" href="/workouts">Workouts</a>
+	<a class="btn btn-sm btn-soft" href="/weight">Weight</a>
+	<a class="btn btn-sm btn-soft" href="/meals">Meals</a>
+</div>
+
 <section class="mt-6 grid items-center gap-6 sm:grid-cols-[auto_1fr] sm:gap-10">
 	<div class="mx-auto w-56 sm:w-64">
 		<MacroRings totals={data.day.totals} targets={data.day.targets} />
@@ -352,6 +443,16 @@
 			<p class="mb-4 text-lg">
 				Nothing logged {isToday ? 'yet today' : 'this day'}.
 				<span class="text-base-content/60">Describe a meal in your own words and the macros are worked out for you.</span>
+			</p>
+		{/if}
+		{#if data.workouts.length}
+			<p class="tabular -mt-2 mb-4 text-sm">
+				<a class="link-hover" href="/workouts">
+					<span class="font-semibold">{burned ? `${round(burned)} kcal burned` : `${workoutMins} min trained`}</span>
+					<span class="text-base-content/60">
+						· {data.workouts.map((w) => w.kind).join(', ')}{burned ? ` · ${workoutMins} min` : ''}
+					</span>
+				</a>
 			</p>
 		{/if}
 		<MacroBars totals={data.day.totals} targets={data.day.targets} />
@@ -413,6 +514,9 @@
 				<h2 class="text-xl font-bold">{cap(type)}</h2>
 				<div class="flex items-center gap-1">
 					{#if kcal}<span class="tabular text-base-content/60 text-sm">{round(kcal)} kcal</span>{/if}
+					{#if entries.length > 1 && groupType !== type}
+						<button class="btn btn-ghost btn-xs" onclick={() => startGroup(type)}>Group as meal</button>
+					{/if}
 					<button class="btn btn-ghost btn-square btn-sm" onclick={() => openAdd(type)} aria-label="Add to {type}">
 						<Icon name="plus" size={18} />
 					</button>
@@ -424,6 +528,9 @@
 				<ul class="divide-base-content/10 divide-y">
 					{#each entries as e (e.id)}
 						<li class="flex items-center gap-4 py-3">
+							{#if groupType === type}
+								<input type="checkbox" class="checkbox checkbox-sm" aria-label="Include {e.name}" bind:group={picked} value={e.id} />
+							{/if}
 							<div class="min-w-0 flex-1">
 								<p class="truncate font-semibold">
 									{#if e.recipeId}<a class="link-hover" href="/recipes/{e.recipeId}">{e.name}</a>{:else}{e.name}{/if}
@@ -443,6 +550,19 @@
 						</li>
 					{/each}
 				</ul>
+				{#if groupType === type}
+					<div class="bg-base-200 rounded-box mt-2 flex flex-col gap-2 p-3">
+						<p class="text-sm">Tick the foods that make one meal, then name it. You can log it again in one tap.</p>
+						<input class="input w-full" placeholder="e.g. Usual breakfast" aria-label="Meal name" bind:value={groupName} />
+						<label class="flex cursor-pointer items-center gap-2 text-sm">
+							<input type="checkbox" class="checkbox checkbox-sm" bind:checked={groupMerge} />Combine them into one entry in today’s log
+						</label>
+						<div class="flex gap-2">
+							<button class="btn btn-primary btn-sm" disabled={!picked.length || !groupName.trim() || grouping} onclick={saveGroup}>Save meal ({picked.length})</button>
+							<button class="btn btn-ghost btn-sm" onclick={() => (groupType = null)}>Cancel</button>
+						</div>
+					</div>
+				{/if}
 			{/if}
 		</div>
 	{/each}
@@ -484,6 +604,21 @@
 		{#if mode === 'recent'}
 			<p class="text-base-content/60 mt-4 text-sm">Repeat a meal for {friendlyDate(data.date).toLowerCase()}. Your usual meals appear first.</p>
 			<input class="input mt-3 w-full" type="search" aria-label="Find a previous meal" placeholder="Find porridge, coffee…" bind:value={recentSearch} />
+			{#if matchingMeals.length}
+				<p class="mt-3 text-sm font-semibold">Your saved meals</p>
+				<ul class="divide-base-content/10 mt-1 max-h-48 divide-y overflow-y-auto">
+					{#each matchingMeals as meal (meal.id)}
+						<li class="flex items-center gap-2 py-3">
+							<div class="min-w-0 flex-1">
+								<p class="font-semibold">{meal.name}</p>
+								<p class="text-base-content/60 text-xs">{round(meal.macros.calories)} kcal · {meal.items.map((i) => `${i.quantity} ${i.name}`).join(', ')}</p>
+							</div>
+							<button class="btn btn-primary btn-sm" onclick={() => logSavedMeal(meal)} aria-label="Log {meal.name}">Log</button>
+						</li>
+					{/each}
+				</ul>
+				<p class="mt-3 text-sm font-semibold">Recent</p>
+			{/if}
 			<ul class="mt-3 max-h-72 divide-y divide-base-content/10 overflow-y-auto">
 				{#each matchingRecent as entry (entry.id)}
 					<li class="flex items-center gap-2 py-3">
@@ -552,10 +687,11 @@
 
 		{#if mode === 'products'}
 			<p class="text-base-content/65 mt-4 text-sm">Choose a saved product and enter how much you ate. Calories and macros are calculated from its saved nutrition panel.</p>
+			<div class="mt-3"><BarcodeField onfound={findByBarcode} busy={barcodeBusy} message={barcodeMsg} /></div>
 			<input class="input mt-3 w-full" type="search" aria-label="Search saved products" placeholder="Find oats, yogurt, bread…" bind:value={productSearch} />
 			<ul class="mt-2 max-h-48 divide-y divide-base-content/10 overflow-y-auto">
 				{#each matchingProducts as product (product.id)}
-					<li><button class="flex w-full items-center justify-between gap-3 py-3 text-left" onclick={() => useProduct(product)}><span><span class="block font-semibold">{product.name}</span><span class="text-base-content/60 text-xs">{round(product.macros.calories)} kcal per {product.basisQuantity} {product.basisUnit}</span></span><span class="btn btn-soft btn-sm">Use</span></button></li>
+					<li><button class="flex w-full items-center justify-between gap-3 py-3 text-left" onclick={() => useProduct(product)}><span><span class="block font-semibold">{product.name}</span><span class="text-base-content/60 text-xs">{round(product.macros.calories)} kcal per {product.basisQuantity} {product.basisUnit}</span></span><span class="flex items-center gap-2">{#if product.rating}<span class="badge {RATING_CLASS[product.rating.label]}" title={product.rating.label}>{product.rating.score}%</span>{/if}<span class="btn btn-soft btn-sm">Use</span></span></button></li>
 				{:else}
 					<li class="text-base-content/60 py-4 text-sm">{data.products.length ? 'No matching products.' : 'No saved products yet. Photograph a nutrition panel under Photo → Product label.'}</li>
 				{/each}
@@ -565,6 +701,12 @@
 			{#if (mode === 'photo' || mode === 'products') && labelResult}
 				<label class="mt-4 block"><span class="mb-1 block text-sm font-semibold">Product name</span><input class="input w-full" bind:value={name} placeholder="e.g. My usual porridge oats" /></label>
 				<p class="badge mt-3" class:badge-warning={!labelResult.fromNutritionLabel} class:badge-ghost={labelResult.fromNutritionLabel}>{labelResult.fromNutritionLabel ? 'Read from nutrition panel' : 'Estimated nutrition'}</p>
+				{#if shownRating}
+					<div class="bg-base-200 rounded-box mt-3 flex items-center justify-between gap-2 p-3">
+						<span class="text-sm font-semibold">Ingredient rating</span>
+						<RatingBadge rating={shownRating} {name} />
+					</div>
+				{/if}
 				{#if labelResult.ingredients}<p class="text-base-content/65 mt-2 text-sm"><strong>Ingredients:</strong> {labelResult.ingredients}</p>{/if}
 				<p class="text-base-content/65 mt-2 text-sm">{labelResult.notes} Check the scanned values against the pack.</p>
 				<div class="mt-4 grid grid-cols-2 gap-3">

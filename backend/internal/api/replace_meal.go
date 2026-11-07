@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/nutrition"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 func (s *Server) replaceMeal(w http.ResponseWriter, r *http.Request) {

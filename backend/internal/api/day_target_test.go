@@ -1,8 +1,9 @@
 package api
 
 import (
-	"github.com/you/nutrition-app/internal/models"
 	"testing"
+
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func TestDayCalorieAdjustments(t *testing.T) {

@@ -2,8 +2,9 @@ package nutrition
 
 import (
 	"context"
-	"github.com/you/nutrition-app/internal/llm"
 	"testing"
+
+	"github.com/padraicbc/larder/internal/llm"
 )
 
 type mealVisionReply string

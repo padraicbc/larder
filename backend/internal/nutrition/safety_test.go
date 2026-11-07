@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/you/nutrition-app/internal/models"
+	"github.com/padraicbc/larder/internal/models"
 )
 
 func recipeWith(ings ...string) models.Recipe {

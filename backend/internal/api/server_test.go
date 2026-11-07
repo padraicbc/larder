@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/you/nutrition-app/internal/auth"
-	"github.com/you/nutrition-app/internal/llm"
-	"github.com/you/nutrition-app/internal/models"
-	"github.com/you/nutrition-app/internal/store"
+	"github.com/padraicbc/larder/internal/auth"
+	"github.com/padraicbc/larder/internal/llm"
+	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/store"
 )
 
 // client is a tiny test helper: c.do("POST", "/api/x", body, &out) returns the status.

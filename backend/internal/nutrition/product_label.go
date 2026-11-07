@@ -6,7 +6,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/you/nutrition-app/internal/llm"
+	"github.com/padraicbc/larder/internal/llm"
 )
 
 // Macros describe BasisQuantity in BasisUnit, not the amount the user ate.
@@ -16,6 +16,9 @@ type LabelEstimate struct {
 	BasisQuantity      float64 `json:"basisQuantity"`
 	BasisUnit          string  `json:"basisUnit"` // g | ml | serving
 	FromNutritionLabel bool    `json:"fromNutritionLabel"`
+	Barcode            string  `json:"barcode,omitempty"`
+	Source             string  `json:"source,omitempty"`
+	IngredientsWarning string  `json:"ingredientsWarning,omitempty"`
 }
 
 func ReadProductLabel(ctx context.Context, c llm.VisionClient, images []llm.Image) (LabelEstimate, error) {
@@ -29,10 +32,12 @@ Read the product name, ingredients list and nutrition panel visible in this phot
 - If only a per-serving panel is available, use basisQuantity:1 and basisUnit:"serving". Mention any printed serving weight in notes. Do not invent a weight.
 - A readable nutrition panel is required. If there is only an ingredients list, or calories, protein, total carbs or fat cannot be read, return an empty name and fromNutritionLabel:false. Do not estimate missing values from ingredients or generic products.
 - Ingredients should be transcribed as text, without inventing missing text. Use zero for unreported fibre but explain this in notes; don't imply the product is fibre-free.
-Return {"name":"product name or a descriptive name","ingredients":"visible ingredients","basisQuantity":100,"basisUnit":"g|ml|serving","fromNutritionLabel":true,"macros":{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0},"confidence":"high|medium|low","notes":"source, serving size, missing values or uncertainty"}.`, images, &out)
+- If a barcode is printed with its digits visible (EAN-13, EAN-8 or UPC-A), copy the digits exactly into "barcode"; otherwise use "". Never guess digits.
+Return {"name":"product name or a descriptive name","barcode":"digits or empty","ingredients":"visible ingredients","basisQuantity":100,"basisUnit":"g|ml|serving","fromNutritionLabel":true,"macros":{"calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0},"confidence":"high|medium|low","notes":"source, serving size, missing values or uncertainty"}.`, images, &out)
 	if err != nil {
 		return out, err
 	}
+	out.Barcode, _ = NormalizeBarcode(out.Barcode) // a misread barcode is dropped, not guessed
 	out.Name = strings.TrimSpace(out.Name)
 	out.BasisUnit = strings.ToLower(strings.TrimSpace(out.BasisUnit))
 	if out.Name == "" {
