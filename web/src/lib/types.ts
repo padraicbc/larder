@@ -148,6 +148,9 @@ export interface Portion {
 }
 
 export interface EverydayFood {
+ saturatedFat?: number | null;
+ dataset?: string;
+ notes?: string;
 	name: string;
 	aliases: string[];
 	category: string;
@@ -189,6 +192,7 @@ export interface ProductRating {
 }
 
 export interface Product extends LabelEstimate {
+ favourite?: boolean;
 	generic?: boolean;
 	rating?: ProductRating;
 	id: string;

@@ -343,6 +343,10 @@ for name, aliases, cat, desc in FOODS:
         'portions': portions_for(fid),
         'fdcId': int(fid), 'usda': desc.replace(" (Includes foods for USDA's Food Distribution Program)", ''),
     })
+# Preserve the separately sourced FNDDS coffee records on a full rebuild.
+from pathlib import Path
+import runpy
+result.extend(runpy.run_path(str(Path(__file__).with_name('build_coffees.py')))['coffee_foods']())
 json.dump(result, open(out, 'w', encoding='utf-8'), indent=1, ensure_ascii=False)
 print(f'{len(result)} foods written')
 for r in [x for x in result if x['name'] in ('Eggs (boiled)', 'Chicken breast (cooked)', 'Bananas', 'Potatoes (white)', 'Bacon (cooked)', 'Sausages, pork (cooked)', 'Beef mince 10% fat (cooked)', 'Tomatoes', 'Apples')]:

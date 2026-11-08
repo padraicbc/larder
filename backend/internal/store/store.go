@@ -690,6 +690,7 @@ func (s *Store) PutProduct(uid string, p models.Product, now time.Time) (models.
 	}
 	if old, ok := u.Products[p.ID]; ok {
 		p.CreatedAt = old.CreatedAt
+		p.Favourite = old.Favourite // changed only by the dedicated favourite action
 	} else {
 		p.ID = NewID()
 		p.CreatedAt = now
@@ -1070,4 +1071,19 @@ func (s *Store) CreateMeal(uid string, m models.SavedMeal, now time.Time) (model
 	m.ID = ""
 	saved := putMealLocked(u, m, now)
 	return saved, s.saveLocked()
+}
+
+// SetProductFavourite changes only the user's shortcut preference.
+func (s *Store) SetProductFavourite(uid, id string, favourite bool, now time.Time) (models.Product, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u := s.mut(uid)
+	p, ok := u.Products[id]
+	if !ok {
+		return models.Product{}, ErrNotFound
+	}
+	p.Favourite, p.UpdatedAt = favourite, now
+	p.Rating = nil
+	u.Products[id] = p
+	return p, s.saveLocked()
 }

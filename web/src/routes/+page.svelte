@@ -5,6 +5,8 @@
 	import { api, upload, errorText } from '#lib/api.ts';
 	import { addDays, cap, friendlyDate, longDate, ratio, round, todayISO } from '#lib/format.ts';
 	import RatingBadge from '#lib/components/RatingBadge.svelte';
+ import ProductFavourite from '#lib/components/ProductFavourite.svelte';
+ import { pickerProducts } from '#lib/product-picker.ts';
 	import BarcodeField from '#lib/components/BarcodeField.svelte';
 	import { lookupBarcode } from '#lib/barcode.ts';
 	import { labelPortionMacros, validLabelPortion } from '#lib/product-label.ts';
@@ -92,12 +94,15 @@
 	let savedRating = $state<ProductRating | null>(null);
 	const RATING_CLASS = { excellent: 'badge-success', good: 'badge-success badge-soft', fair: 'badge-warning', poor: 'badge-error badge-soft', avoid: 'badge-error' } as const;
 	let productSearch = $state('');
+ let showFavourites = $state(false);
+ const favouriteCount = $derived(data.products.filter(p => p.favourite).length);
+ const selectedProduct = $derived(data.products.find(p => p.id === savedProductId));
 	let savingProduct = $state(false);
 	const productSnapshot = $derived(labelResult ? JSON.stringify({ ...labelResult, name: name.trim() }) : '');
 	const productChanged = $derived(productSnapshot !== savedProductSnapshot);
 	const shownRating = $derived(savedProductId && !productChanged ? savedRating : null);
 	const productValid = $derived(!!name.trim() && !!labelResult && validLabelPortion(labelResult, labelResult.basisQuantity));
-	const matchingProducts = $derived(data.products.filter((product) => (product.name + ' ' + (product.barcode ?? '')).toLowerCase().includes(productSearch.toLowerCase())));
+	const matchingProducts = $derived(pickerProducts(data.products, productSearch, showFavourites));
 
 	function useProduct(product: Product) {
 		labelResult = { ...product, macros: { ...product.macros } };
@@ -123,7 +128,7 @@
 			foodsLoaded = false; // try again next time the tab opens
 		}
 	}
-	const QUICK_FOODS = ['Eggs (boiled)', 'Eggs (scrambled)', 'Chicken breast (cooked)', 'Bacon (cooked)', 'Bread (white)', 'Toast (wholemeal)', 'Milk (semi-skimmed)', 'Rice (white, cooked)', 'Pasta (cooked)', 'Porridge oats (dry)', 'Bananas', 'Apples', 'Potatoes (boiled)'];
+	const QUICK_FOODS = ['Cappuccino (2% milk)', 'Latte (2% milk)', 'Eggs (boiled)', 'Eggs (scrambled)', 'Chicken breast (cooked)', 'Bacon (cooked)', 'Bread (white)', 'Toast (wholemeal)', 'Milk (semi-skimmed)', 'Rice (white, cooked)', 'Pasta (cooked)', 'Porridge oats (dry)', 'Bananas', 'Apples', 'Potatoes (boiled)'];
 	// Browse by kind of food: tap a category to list what's in it.
 	const CATEGORY_ORDER = ['Eggs', 'Meat & poultry', 'Fish & seafood', 'Dairy', 'Bread, rice & pasta', 'Vegetables', 'Fruit', 'Beans & pulses', 'Nuts & seeds', 'Fats & oils', 'Sweet & spreads', 'Drinks'];
 	let foodCategory = $state('');
@@ -155,9 +160,9 @@
 					confidence: 'medium',
 					basisQuantity: 100,
 					basisUnit: 'g',
-					macros: { calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, fiber: f.fiber },
+					macros: { calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, fiber: f.fiber, saturatedFat: f.saturatedFat },
 					portions: f.portions,
-					notes: `Per 100 g. From USDA FoodData Central (SR Legacy #${f.fdcId}): ${f.usda}.`
+					notes: `Per 100 g. From USDA FoodData Central (${f.dataset || 'SR Legacy'} #${f.fdcId}): ${f.usda}. ${f.notes || ''}`
 				}
 			});
 			await invalidateAll(); // so it's in your products from now on
@@ -752,12 +757,38 @@
 			{#if labelResult}
 				<!-- A food is chosen: keep the amount and quick buttons in view instead of the picker above them. -->
 				<div class="bg-base-200 rounded-box mt-4 flex items-center justify-between gap-2 p-3">
-					<span class="min-w-0 truncate font-semibold">{labelResult.name}</span>
+					<span class="min-w-0 flex-1 truncate font-semibold">{labelResult.name}</span>
+ {#if selectedProduct}<ProductFavourite product={selectedProduct} />{/if}
 					<button type="button" class="btn btn-ghost btn-sm" onclick={() => { labelResult = null; estimate = null; savedProductId = ''; }}>Change food</button>
 				</div>
 			{:else}
-			<p class="text-base-content/65 mt-4 text-sm">Pick a food and say how much you ate. Calories and macros are worked out for you.</p>
-			{#if !productSearch.trim() && quickFoods.length}
+
+ <label class="mt-4 block text-sm font-semibold" for="product-picker-search">Search foods or saved products</label>
+ <input id="product-picker-search" class="input mt-2 w-full" type="search" placeholder="Find coffee, oats, yogurt…" bind:value={productSearch} oninput={() => showFavourites = false} />
+ <button type="button" class="btn btn-sm mt-2 {showFavourites ? 'btn-primary' : 'btn-ghost'}" aria-pressed={showFavourites} onclick={() => {showFavourites = !showFavourites; productSearch = '';}}>★ Favourites ({favouriteCount})</button>
+ {#if productSearch.trim() || showFavourites}
+  {#if matchingProducts.length}
+   <p class="mt-3 text-sm font-semibold">{productSearch.trim() ? 'Saved products' : 'Favourites'}</p>
+   <ul class="divide-base-content/10 mt-2 max-h-64 divide-y overflow-y-auto" aria-label={productSearch.trim() ? 'Matching saved products' : 'Favourite products'}>
+    {#each matchingProducts as product (product.id)}
+     <li class="flex items-center gap-2">
+      <button type="button" class="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 text-left" onclick={() => useProduct(product)}><span class="min-w-0"><span class="block truncate font-semibold">{product.name}</span><span class="text-base-content/60 text-xs">{round(product.macros.calories)} kcal per {product.basisQuantity} {product.basisUnit}</span></span><span class="flex shrink-0 items-center gap-2">{#if product.rating}<span class="badge {RATING_CLASS[product.rating.label]}" title={product.rating.label}>{product.rating.score}%</span>{/if}<span class="btn btn-soft btn-sm">Use</span></span></button>
+      <ProductFavourite {product} />
+     </li>
+    {/each}
+   </ul>
+   {#if !productSearch.trim() && favouriteCount > 8}<p class="text-base-content/60 mt-2 text-xs">Showing 8 favourites. Search by name to find the rest.</p>{/if}
+   {#if productSearch.trim() && matchingProducts.length === 12}<p class="text-base-content/60 mt-2 text-xs">Showing up to 12 saved products. Keep typing to narrow your search.</p>{/if}
+  {:else if showFavourites && !productSearch.trim()}<p class="text-base-content/60 mt-3 text-sm">No favourites yet. Search for a saved product or pick an everyday food, then tap ☆ to add it here.</p>{/if}
+  {#if productSearch.trim() && matchingFoods.length}
+   <p class="mt-3 text-sm font-semibold">Everyday foods <span class="text-base-content/50 font-normal">(USDA values, per 100 g)</span></p>
+   <ul class="divide-base-content/10 mt-1 max-h-48 divide-y overflow-y-auto" aria-label="Matching everyday foods">
+    {#each matchingFoods as f (f.name)}<li><button type="button" class="flex w-full items-center justify-between gap-3 py-2 text-left" disabled={pickingFood} onclick={() => useEveryday(f)}><span>{f.name}</span><span class="tabular text-base-content/60 text-xs">{f.calories} kcal</span></button></li>{/each}
+   </ul>
+  {/if}
+  {#if productSearch.trim() && !matchingProducts.length && !matchingFoods.length}<p class="text-base-content/60 mt-3 text-sm">No matching foods. Try another name, scan a barcode, or photograph the nutrition label.</p>{/if}
+ {/if}
+			{#if !productSearch.trim() && !showFavourites && quickFoods.length}
 				<p class="mt-3 text-sm font-semibold">Everyday foods</p>
 				<div class="mt-1 flex flex-wrap gap-1" aria-label="Everyday foods">
 					{#each quickFoods as f (f.name)}<button type="button" class="btn btn-xs btn-outline border-base-300 rounded-full" disabled={pickingFood} onclick={() => useEveryday(f)}>{f.name}</button>{/each}
@@ -776,23 +807,7 @@
 					</ul>
 				{/if}
 			{/if}
-			<div class="mt-3"><BarcodeField onfound={findByBarcode} busy={barcodeBusy} message={barcodeMsg} /></div>
-			<input class="input mt-3 w-full" type="search" aria-label="Search saved products" placeholder="Find oats, yogurt, bread…" bind:value={productSearch} />
-			<ul class="mt-2 max-h-48 divide-y divide-base-content/10 overflow-y-auto">
-				{#each matchingProducts as product (product.id)}
-					<li><button class="flex w-full items-center justify-between gap-3 py-3 text-left" onclick={() => useProduct(product)}><span><span class="block font-semibold">{product.name}</span><span class="text-base-content/60 text-xs">{round(product.macros.calories)} kcal per {product.basisQuantity} {product.basisUnit}</span></span><span class="flex items-center gap-2">{#if product.rating}<span class="badge {RATING_CLASS[product.rating.label]}" title={product.rating.label}>{product.rating.score}%</span>{/if}<span class="btn btn-soft btn-sm">Use</span></span></button></li>
-				{:else}
-					<li class="text-base-content/60 py-4 text-sm">{data.products.length ? 'No matching products.' : 'No saved products yet. Pick an everyday food above, or photograph a nutrition panel under Photo → Product label.'}</li>
-				{/each}
-			</ul>
-			{#if matchingFoods.length}
-				<p class="mt-3 text-sm font-semibold">Everyday foods <span class="text-base-content/50 font-normal">(real USDA values, per 100 g)</span></p>
-				<ul class="divide-base-content/10 mt-1 max-h-48 divide-y overflow-y-auto" aria-label="Matching everyday foods">
-					{#each matchingFoods as f (f.name)}
-						<li><button type="button" class="flex w-full items-center justify-between gap-3 py-2 text-left" disabled={pickingFood} onclick={() => useEveryday(f)}><span>{f.name}</span><span class="tabular text-base-content/60 text-xs">{f.calories} kcal</span></button></li>
-					{/each}
-				</ul>
-			{/if}
+ <div class="mt-3"><BarcodeField onfound={findByBarcode} busy={barcodeBusy} message={barcodeMsg} /></div>
 			{/if}
 		{/if}
 

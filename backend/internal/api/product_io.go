@@ -31,6 +31,7 @@ type productFile struct {
 }
 
 type fileProduct struct {
+	Favourite          bool             `json:"favourite,omitempty"`
 	Name               string           `json:"name"`
 	Barcode            string           `json:"barcode"`
 	Ingredients        string           `json:"ingredients"`
@@ -68,7 +69,7 @@ func (s *Server) exportProducts(w http.ResponseWriter, r *http.Request) {
 			ing = p.Name
 		}
 		file.Products = append(file.Products, fileProduct{
-			Name: p.Name, Barcode: p.Barcode, Ingredients: ing, BasisQuantity: p.BasisQuantity, BasisUnit: p.BasisUnit,
+			Name: p.Name, Favourite: p.Favourite, Barcode: p.Barcode, Ingredients: ing, BasisQuantity: p.BasisQuantity, BasisUnit: p.BasisUnit,
 			Macros: p.Macros, FromNutritionLabel: &fl, Confidence: p.Confidence, Notes: p.Notes, Source: p.Source, Generic: p.Generic, Portions: p.Portions,
 		})
 	}
@@ -139,7 +140,7 @@ func cleanImported(f fileProduct) (models.Product, string) {
 			return models.Product{}, "nutrition values must be zero or more"
 		}
 	}
-	p := models.Product{Name: name, Barcode: code, Ingredients: ing, BasisQuantity: f.BasisQuantity, BasisUnit: unit, Macros: m, Generic: f.Generic, Portions: nutrition.CleanPortions(f.Portions)}
+	p := models.Product{Favourite: f.Favourite, Name: name, Barcode: code, Ingredients: ing, BasisQuantity: f.BasisQuantity, BasisUnit: unit, Macros: m, Generic: f.Generic, Portions: nutrition.CleanPortions(f.Portions)}
 	if !nutrition.HasNutrition(p) {
 		return models.Product{}, "missing nutrition values"
 	}

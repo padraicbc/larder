@@ -182,6 +182,7 @@ type ShoppingList struct {
 }
 
 type Product struct {
+	Favourite          bool      `json:"favourite"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
 	Ingredients        string    `json:"ingredients"`

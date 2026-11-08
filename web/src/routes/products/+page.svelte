@@ -5,9 +5,10 @@
 	import { round } from '#lib/format.ts';
 	import { shrinkImage } from '#lib/images.ts';
 	import { toast } from '#lib/toast.svelte.ts';
-	import type { Product, Scan } from '#lib/types.ts';
+	import type { Product, Scan, EverydayFood } from '#lib/types.ts';
 	import Icon from '#lib/components/Icon.svelte';
 	import RatingBadge from '#lib/components/RatingBadge.svelte';
+ import ProductFavourite from '#lib/components/ProductFavourite.svelte';
  import ProductAI from '#lib/components/ProductAI.svelte';
  import { mergeProductSuggestion } from '#lib/product-ai.ts';
 	import BarcodeField from '#lib/components/BarcodeField.svelte';
@@ -132,7 +133,7 @@
 	let genBusy = $state(false);
 
 	// The built-in everyday foods (loose fruit, veg, potatoes): real USDA numbers, per 100 g, raw.
-	type Food = { portions: { label: string; grams: number }[]; name: string; aliases: string[]; category: string; calories: number; protein: number; carbs: number; fat: number; fiber: number; fdcId: number; usda: string };
+	type Food = EverydayFood;
 	let foods = $state<Food[]>([]);
 	let foodsSource = $state('');
 	let picked = $state<Food | null>(null);
@@ -161,11 +162,11 @@
 		gen.carbs = f.carbs;
 		gen.fat = f.fat;
 		gen.fiber = f.fiber;
- gen.saturatedFat = null;
+ gen.saturatedFat = f.saturatedFat ?? null;
 	}
 	// Still the list's own numbers (not edited since you picked it)?
 	const fromList = $derived(
-		!!picked && gen.name.trim() === picked.name && gen.calories === picked.calories && gen.protein === picked.protein && gen.carbs === picked.carbs && gen.fat === picked.fat && gen.fiber === picked.fiber
+		!!picked && gen.name.trim() === picked.name && gen.calories === picked.calories && gen.protein === picked.protein && gen.carbs === picked.carbs && gen.fat === picked.fat && gen.fiber === picked.fiber && gen.saturatedFat === (picked.saturatedFat ?? null)
 	);
 	const genValid = $derived(!!gen.name.trim() && [gen.calories, gen.protein, gen.carbs, gen.fat, gen.fiber].some((v) => (v ?? 0) > 0));
 
@@ -202,7 +203,7 @@
 					source: fromList ? 'usda' : '',
 					portions: fromList && picked ? picked.portions : [],
 					confidence: fromList ? 'medium' : 'low',
-					notes: fromList && picked ? `Per 100 g, raw. From USDA FoodData Central (SR Legacy #${picked.fdcId}): ${picked.usda}.` : '',
+					notes: fromList && picked ? `Per 100 g. From USDA FoodData Central (${picked.dataset || 'SR Legacy'} #${picked.fdcId}): ${picked.usda}. ${picked.notes || ''}` : '',
 					macros: { calories: gen.calories ?? 0, protein: gen.protein ?? 0, carbs: gen.carbs ?? 0, fat: gen.fat ?? 0, saturatedFat: gen.saturatedFat, fiber: gen.fiber ?? 0 }
 				}
 			});
@@ -446,7 +447,8 @@
 						</span>
 					</span>
 				</button>
-				{#if p.rating}
+				<ProductFavourite product={p} />
+ {#if p.rating}
 					<RatingBadge rating={p.rating} name={p.name} />
 				{:else}
 					<span class="badge badge-warning badge-soft shrink-0" title="A rating needs both the ingredients and the nutrition">Needs {needs(p) || 'checking'}</span>

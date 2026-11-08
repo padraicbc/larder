@@ -187,3 +187,38 @@ func TestWholeEverydayRange(t *testing.T) {
 		}
 	}
 }
+
+func TestCoffeePortionsAndMilkVariants(t *testing.T) {
+	byName := map[string]GenericFood{}
+	for _, f := range Foods() {
+		byName[f.Name] = f
+	}
+	for _, name := range []string{"Cappuccino (2% milk)", "Cappuccino (skimmed milk)", "Latte (2% milk)", "Latte (skimmed milk)", "Iced latte (2% milk)", "Mocha (2% milk)"} {
+		f, ok := byName[name]
+		if !ok || f.Dataset != "FNDDS" || f.SaturatedFat == nil || f.Notes == "" {
+			t.Fatalf("missing sourced coffee details: %s", name)
+		}
+		if len(f.Portions) < 3 {
+			t.Fatalf("missing sizes: %s", name)
+		}
+		for i, size := range []string{"1 small", "1 medium", "1 large"} {
+			if f.Portions[i].Label != size || (i > 0 && f.Portions[i].Grams <= f.Portions[i-1].Grams) {
+				t.Fatalf("bad size ordering: %s %+v", name, f.Portions)
+			}
+		}
+	}
+	latte := byName["Latte (2% milk)"]
+	medium := models.Macros{Calories: latte.Calories, Protein: latte.Protein, Fat: latte.Fat, SaturatedFat: latte.SaturatedFat}.Scale(latte.Portions[1].Grams / 100)
+	if medium.Calories != 206.4 || medium.SaturatedFat == nil || *medium.SaturatedFat <= 4 {
+		t.Fatalf("medium latte must scale nutrition including saturates: %+v", medium)
+	}
+	if byName["Latte (skimmed milk)"].Calories >= latte.Calories {
+		t.Fatal("skimmed milk latte must differ from 2% milk")
+	}
+	if got := SearchFoods("capuchino", 0); len(got) != 2 {
+		t.Fatalf("cappuccino spelling alias: %+v", got)
+	}
+	if len(SearchFoods("coffee", 0)) < 9 {
+		t.Fatal("coffee search must find the drink types")
+	}
+}

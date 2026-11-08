@@ -5192,5 +5192,290 @@
   ],
   "fdcId": 173227,
   "usda": "Beverages, tea, black, brewed, prepared with tap water"
+ },
+ {
+  "name": "Cappuccino (2% milk)",
+  "aliases": [
+   "coffee",
+   "cappuccino",
+   "cappucino",
+   "capuchino"
+  ],
+  "category": "Drinks",
+  "protein": 1.71,
+  "fat": 0.99,
+  "carbs": 2.75,
+  "calories": 27.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.575,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 360
+   },
+   {
+    "label": "1 medium",
+    "grams": 480
+   },
+   {
+    "label": "1 large",
+    "grams": 600
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 240
+   }
+  ],
+  "fdcId": 2710472,
+  "usda": "Coffee, Cappuccino",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. No added sugar, syrup or cream."
+ },
+ {
+  "name": "Cappuccino (skimmed milk)",
+  "aliases": [
+   "coffee",
+   "cappuccino",
+   "cappucino",
+   "capuchino",
+   "skinny cappuccino"
+  ],
+  "category": "Drinks",
+  "protein": 1.75,
+  "fat": 0.07,
+  "carbs": 2.76,
+  "calories": 19.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.04,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 360
+   },
+   {
+    "label": "1 medium",
+    "grams": 480
+   },
+   {
+    "label": "1 large",
+    "grams": 600
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 240
+   }
+  ],
+  "fdcId": 2710473,
+  "usda": "Coffee, Cappuccino, nonfat",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. No added sugar, syrup or cream."
+ },
+ {
+  "name": "Latte (2% milk)",
+  "aliases": [
+   "coffee",
+   "latte",
+   "cafe latte",
+   "caffè latte"
+  ],
+  "category": "Drinks",
+  "calories": 43,
+  "protein": 2.81,
+  "fat": 1.61,
+  "carbs": 4.35,
+  "fiber": 0,
+  "saturatedFat": 0.938,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 360.0
+   },
+   {
+    "label": "1 medium",
+    "grams": 480.0
+   },
+   {
+    "label": "1 large",
+    "grams": 600.0
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 240.0
+   }
+  ],
+  "fdcId": 2710386,
+  "usda": "Coffee, Latte",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. No added sugar, syrup or cream."
+ },
+ {
+  "name": "Latte (skimmed milk)",
+  "aliases": [
+   "coffee",
+   "latte",
+   "skinny latte"
+  ],
+  "category": "Drinks",
+  "protein": 2.87,
+  "fat": 0.1,
+  "carbs": 4.37,
+  "calories": 30.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.056,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 360
+   },
+   {
+    "label": "1 medium",
+    "grams": 480
+   },
+   {
+    "label": "1 large",
+    "grams": 600
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 240
+   }
+  ],
+  "fdcId": 2710387,
+  "usda": "Coffee, Latte, nonfat",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. No added sugar, syrup or cream."
+ },
+ {
+  "name": "Iced latte (2% milk)",
+  "aliases": [
+   "coffee",
+   "iced latte",
+   "cold latte"
+  ],
+  "category": "Drinks",
+  "protein": 1.75,
+  "fat": 1.01,
+  "carbs": 2.81,
+  "calories": 27.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.587,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 360
+   },
+   {
+    "label": "1 medium",
+    "grams": 480
+   },
+   {
+    "label": "1 large",
+    "grams": 600
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 240
+   }
+  ],
+  "fdcId": 2710431,
+  "usda": "Coffee, Iced Latte",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. No added sugar, syrup or cream."
+ },
+ {
+  "name": "Mocha (2% milk)",
+  "aliases": [
+   "coffee",
+   "mocha",
+   "cafe mocha",
+   "caffè mocha"
+  ],
+  "category": "Drinks",
+  "protein": 2.56,
+  "fat": 1.47,
+  "carbs": 10.2,
+  "calories": 64.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.855,
+  "portions": [
+   {
+    "label": "1 small",
+    "grams": 372
+   },
+   {
+    "label": "1 medium",
+    "grams": 496
+   },
+   {
+    "label": "1 large",
+    "grams": 620
+   },
+   {
+    "label": "1 cup (8 fl oz)",
+    "grams": 248
+   }
+  ],
+  "fdcId": 2710410,
+  "usda": "Coffee, Cafe Mocha",
+  "dataset": "FNDDS",
+  "notes": "USDA reference cup sizes: small 12 fl oz, medium 16 fl oz, large 20 fl oz. Cafe sizes and recipes vary; adjust the amount to match your drink. Includes chocolate syrup; no extra sugar or cream."
+ },
+ {
+  "name": "Macchiato (espresso with milk)",
+  "aliases": [
+   "coffee",
+   "macchiato",
+   "espresso macchiato"
+  ],
+  "category": "Drinks",
+  "protein": 1.18,
+  "fat": 0.83,
+  "carbs": 2.71,
+  "calories": 23.0,
+  "fiber": 0.0,
+  "saturatedFat": 0.473,
+  "portions": [
+   {
+    "label": "1 espresso cup",
+    "grams": 60
+   }
+  ],
+  "fdcId": 2710382,
+  "usda": "Coffee, macchiato",
+  "dataset": "FNDDS",
+  "notes": "Espresso with a little milk, not a sweetened latte macchiato. No added sugar."
+ },
+ {
+  "name": "Espresso (black)",
+  "aliases": [
+   "coffee",
+   "espresso",
+   "coffee shot"
+  ],
+  "category": "Drinks",
+  "calories": 9.0,
+  "protein": 0.12,
+  "fat": 0.18,
+  "carbs": 1.67,
+  "fiber": 0.0,
+  "saturatedFat": 0.092,
+  "portions": [
+   {
+    "label": "1 single shot",
+    "grams": 29.6
+   },
+   {
+    "label": "1 double shot",
+    "grams": 59.2
+   },
+   {
+    "label": "1 triple shot",
+    "grams": 88.8
+   }
+  ],
+  "fdcId": 171891,
+  "usda": "Beverages, coffee, brewed, espresso, restaurant-prepared",
+  "dataset": "SR Legacy",
+  "notes": "Black espresso, no milk or added sugar. Shot portions use the USDA 29.6 g fluid-ounce measure."
  }
 ]

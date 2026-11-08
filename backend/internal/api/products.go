@@ -186,3 +186,23 @@ func (s *Server) fillLookupSaturatedFat(r *http.Request, code string, quantity f
 		m.SaturatedFat = &value
 	}
 }
+
+func (s *Server) setProductFavourite(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Favourite *bool `json:"favourite"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if body.Favourite == nil {
+		writeErr(w, 400, "choose whether the product is a favourite")
+		return
+	}
+	p, err := s.Store.SetProductFavourite(userID(r), r.PathValue("id"), *body.Favourite, s.Now())
+	if err != nil {
+		storeErr(w, err)
+		return
+	}
+	p.Rating = nutrition.RateProductWith(p, s.Store.RatingSettings(userID(r)))
+	writeJSON(w, 200, p)
+}

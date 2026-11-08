@@ -10,23 +10,26 @@ import (
 )
 
 // FoodsSource says where the built-in everyday foods come from.
-const FoodsSource = "USDA FoodData Central (SR Legacy), public domain"
+const FoodsSource = "USDA FoodData Central (SR Legacy and FNDDS), public domain"
 
-// GenericFood is a loose everyday food with its nutrition per 100 g (raw, edible portion).
+// GenericFood is a loose everyday food with its nutrition per 100 g (in the preparation described by its name).
 // The numbers are copied from USDA FoodData Central records by scripts, not typed by hand;
 // FDCID and USDA name the exact record so any value can be checked.
 type GenericFood struct {
-	Name     string           `json:"name"`
-	Aliases  []string         `json:"aliases"`
-	Category string           `json:"category"`
-	Calories float64          `json:"calories"`
-	Protein  float64          `json:"protein"`
-	Carbs    float64          `json:"carbs"`
-	Fat      float64          `json:"fat"`
-	Fiber    float64          `json:"fiber"`
-	Portions []models.Portion `json:"portions"`
-	FDCID    int              `json:"fdcId"`
-	USDA     string           `json:"usda"`
+	SaturatedFat *float64         `json:"saturatedFat,omitempty"`
+	Dataset      string           `json:"dataset,omitempty"`
+	Notes        string           `json:"notes,omitempty"`
+	Name         string           `json:"name"`
+	Aliases      []string         `json:"aliases"`
+	Category     string           `json:"category"`
+	Calories     float64          `json:"calories"`
+	Protein      float64          `json:"protein"`
+	Carbs        float64          `json:"carbs"`
+	Fat          float64          `json:"fat"`
+	Fiber        float64          `json:"fiber"`
+	Portions     []models.Portion `json:"portions"`
+	FDCID        int              `json:"fdcId"`
+	USDA         string           `json:"usda"`
 }
 
 //go:embed foods.json

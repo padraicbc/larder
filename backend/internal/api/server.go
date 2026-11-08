@@ -91,6 +91,7 @@ func (s *Server) Handler() http.Handler {
 	protected("GET /api/products", s.listProducts)
 	protected("POST /api/products", s.saveProduct)
 	protected("DELETE /api/products/{id}", s.deleteProduct)
+	protected("PUT /api/products/{id}/favourite", s.setProductFavourite)
 	protected("PUT /api/products/{id}/ingredients", s.setProductIngredients)
 	protected("GET /api/foods", s.listFoods)
 	protected("GET /api/food-chat", s.foodChatInfo)
