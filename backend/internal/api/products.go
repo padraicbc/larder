@@ -35,6 +35,9 @@ func (s *Server) saveProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.Name = strings.TrimSpace(p.Name)
+	if p.Generic && strings.TrimSpace(p.Ingredients) == "" {
+		p.Ingredients = p.Name // whole food: the food is its own ingredient
+	}
 	p.BasisUnit = strings.ToLower(strings.TrimSpace(p.BasisUnit))
 	if p.Name == "" {
 		writeErr(w, 400, "give the product a name")
@@ -49,7 +52,7 @@ func (s *Server) saveProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, v := range []float64{p.Macros.Calories, p.Macros.Protein, p.Macros.Carbs, p.Macros.Fat, p.Macros.Fiber} {
-		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) || !p.Macros.ValidSaturatedFat() {
 			writeErr(w, 400, "nutrition values must be zero or greater")
 			return
 		}
@@ -62,7 +65,8 @@ func (s *Server) saveProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		p.Barcode = code
 	}
-	if p.Source != "" && p.Source != "openfoodfacts" {
+	p.Portions = nutrition.CleanPortions(p.Portions)
+	if p.Source != "" && p.Source != "openfoodfacts" && p.Source != "usda" && p.Source != "ai" {
 		p.Source = ""
 	}
 	if !p.FromNutritionLabel {
@@ -96,6 +100,7 @@ func (s *Server) lookupBarcode(w http.ResponseWriter, r *http.Request) {
 	}
 	uid := userID(r)
 	if saved, err := s.Store.ProductByBarcode(uid, code); err == nil {
+		s.fillLookupSaturatedFat(r, code, saved.BasisQuantity, saved.BasisUnit, &saved.Macros)
 		saved.Rating = nutrition.RateProductWith(saved, s.Store.RatingSettings(uid))
 		writeJSON(w, 200, map[string]any{"source": "saved", "product": saved})
 		return
@@ -161,4 +166,23 @@ func (s *Server) setProductIngredients(w http.ResponseWriter, r *http.Request) {
 	}
 	p.Rating = nutrition.RateProductWith(p, s.Store.RatingSettings(userID(r)))
 	writeJSON(w, 200, p)
+}
+
+// fillLookupSaturatedFat fills a missing nutrient for this response only. A saved
+// product from before saturated fat was captured must not hide online label data.
+// Keep the saved basis and all user-entered values; never persist a lookup or score.
+func (s *Server) fillLookupSaturatedFat(r *http.Request, code string, quantity float64, unit string, m *models.Macros) {
+	if m.SaturatedFat != nil || m.Fat <= 0 || quantity <= 0 || (unit != "g" && unit != "ml") || !s.Store.Lookup().OpenFoodFacts {
+		return
+	}
+	found, err := nutrition.LookupOpenFoodFacts(r.Context(), s.HTTP, s.OFFBase, code)
+	if err != nil || found.BasisUnit != unit || found.Macros.SaturatedFat == nil {
+		return
+	}
+	value := *found.Macros.SaturatedFat * quantity / found.BasisQuantity
+	candidate := *m
+	candidate.SaturatedFat = &value
+	if candidate.ValidSaturatedFat() {
+		m.SaturatedFat = &value
+	}
 }

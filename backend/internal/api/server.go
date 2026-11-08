@@ -92,6 +92,15 @@ func (s *Server) Handler() http.Handler {
 	protected("POST /api/products", s.saveProduct)
 	protected("DELETE /api/products/{id}", s.deleteProduct)
 	protected("PUT /api/products/{id}/ingredients", s.setProductIngredients)
+	protected("GET /api/foods", s.listFoods)
+	protected("GET /api/food-chat", s.foodChatInfo)
+	protected("POST /api/food-chat", s.foodChat)
+	protected("POST /api/food-chat/draft", s.foodChatDraft)
+	protected("POST /api/food-chat/meals", s.saveChatMeal)
+	protected("POST /api/products/suggest", s.suggestProduct)
+	protected("GET /api/products/export", s.exportProducts)
+	protected("POST /api/products/import/preview", s.importProducts)
+	protected("POST /api/products/import", s.importProducts)
 	protected("GET /api/products/lookup/{barcode}", s.lookupBarcode)
 	protected("POST /api/products/barcode-photo", s.readBarcodePhoto)
 	protected("GET /api/log", s.getLog)
@@ -169,6 +178,7 @@ type apiError struct {
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
 }
@@ -481,7 +491,12 @@ func (s *Server) addLog(w http.ResponseWriter, r *http.Request) {
 
 func roundMacros(m models.Macros) models.Macros {
 	r := func(v float64) float64 { return math.Round(v*10) / 10 }
-	return models.Macros{Calories: math.Round(m.Calories), Protein: r(m.Protein), Carbs: r(m.Carbs), Fat: r(m.Fat), Fiber: r(m.Fiber)}
+	out := models.Macros{Calories: math.Round(m.Calories), Protein: r(m.Protein), Carbs: r(m.Carbs), Fat: r(m.Fat), Fiber: r(m.Fiber)}
+	if m.SaturatedFat != nil {
+		v := r(*m.SaturatedFat)
+		out.SaturatedFat = &v
+	}
+	return out
 }
 
 func orDefault(s, d string) string {

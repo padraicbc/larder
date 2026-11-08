@@ -261,3 +261,65 @@ func TestRuleCatalogueMatchesTheRules(t *testing.T) {
 		t.Error("RuleKnown")
 	}
 }
+
+func TestGenericWholeFoods(t *testing.T) {
+	carrots := models.Product{Name: "Carrots", Generic: true, BasisUnit: "g", BasisQuantity: 100, Macros: models.Macros{Calories: 41, Protein: 0.9, Carbs: 10, Fat: 0.2, Fiber: 2.8}}
+	r := RateProduct(carrots)
+	if r == nil || r.Score < 90 || r.Label != "excellent" {
+		t.Fatalf("a plain whole food with no ingredients label should still be rated, and well: %+v", r)
+	}
+	// The same thing as a packaged product (not generic) has no ingredients, so no rating.
+	carrots.Generic = false
+	if RateProduct(carrots) != nil {
+		t.Error("a packaged product without ingredients must not be rated")
+	}
+	// A generic food still needs its nutrition.
+	if RateProduct(models.Product{Name: "Potatoes", Generic: true}) != nil {
+		t.Error("a generic food without nutrition must not be rated")
+	}
+	// ...and a scan view of a generic product rates the same way.
+	sc := ScanFromProduct(models.Product{Name: "Potatoes", Generic: true, BasisUnit: "g", BasisQuantity: 100, Macros: models.Macros{Calories: 77, Protein: 2, Carbs: 17, Fiber: 2.2}})
+	if !sc.Generic || RateScan(sc) == nil {
+		t.Errorf("scan of a generic product: %+v", sc)
+	}
+}
+
+func TestSaturatedFatRating(t *testing.T) {
+	for _, tc := range []struct {
+		saturated float64
+		key       string
+		penalty   int
+	}{
+		{0, "", 0}, {5, "", 0}, {5.1, "saturated-mid", -12}, {10, "saturated-mid", -12}, {10.1, "saturated-high", -20}, {20, "saturated-high", -20}, {27, "saturated-very-high", -30},
+	} {
+		m := models.Macros{Calories: 410, Fat: 35, Protein: 25, SaturatedFat: &tc.saturated}
+		p := prod("Milk, salt, cultures, rennet", m)
+		r := RateProduct(p)
+		if r.Provisional {
+			t.Fatal("known saturated fat must complete the rating")
+		}
+		if tc.key != "" {
+			if v, ok := factorPoints(r, tc.key); !ok || v != tc.penalty {
+				t.Fatalf("%v: %+v", tc, r)
+			}
+		}
+		if tc.saturated == 27 && r.Score != 62 {
+			t.Fatalf("vintage cheese score = %d, want 62", r.Score)
+		}
+		p.BasisQuantity = 25
+		p.Macros = m.Scale(0.25)
+		if scaled := RateProduct(p); scaled.Score != r.Score {
+			t.Fatal("portion basis changed score")
+		}
+		if tc.key != "" {
+			off := RateProductWith(prod("Milk, salt, cultures, rennet", m), models.RatingSettings{Points: map[string]int{tc.key: 0}})
+			if off.Score != r.Score-tc.penalty {
+				t.Fatal("override ignored")
+			}
+		}
+	}
+	unknown := RateProduct(prod("Milk", models.Macros{Fat: 35}))
+	if !unknown.Provisional || !strings.Contains(unknown.ProvisionalReason, "Saturated fat") {
+		t.Fatal("missing saturated fat must be explained")
+	}
+}

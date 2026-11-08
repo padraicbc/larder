@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { startFoodChat } from '#lib/start-food-chat.ts';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/state';
 	import { api, upload, errorText } from '#lib/api.ts';
@@ -9,7 +10,7 @@
 	import { labelPortionMacros, validLabelPortion } from '#lib/product-label.ts';
 	import { shrinkImage } from '#lib/images.ts';
 	import { toast } from '#lib/toast.svelte.ts';
-	import { MEAL_TYPES, emptyMacros, type Estimate, type LabelEstimate, type Product, type SavedMeal, type ProductRating, type PhotoEstimate, type MealItem, type LogEntry, type MacroKey, type Macros, type MealType } from '#lib/types.ts';
+	import { MEAL_TYPES, emptyMacros, type Estimate, type LabelEstimate, type EverydayFood, type Product, type SavedMeal, type ProductRating, type PhotoEstimate, type MealItem, type LogEntry, type MacroKey, type Macros, type MealType } from '#lib/types.ts';
 	import MacroRings from '#lib/components/MacroRings.svelte';
 	import MacroBars from '#lib/components/MacroBars.svelte';
 	import MacroLine from '#lib/components/MacroLine.svelte';
@@ -107,6 +108,65 @@
 		savedProductId = product.id;
 		savedRating = product.rating ?? null;
 		savedProductSnapshot = JSON.stringify({ ...labelResult, name: name.trim() });
+	}
+
+	// ---- everyday foods: log eggs, chicken, potatoes… without setting anything up first ----
+	let foods = $state<EverydayFood[]>([]);
+	let foodsLoaded = false;
+	let pickingFood = $state(false);
+	async function ensureFoods() {
+		if (foodsLoaded) return;
+		foodsLoaded = true;
+		try {
+			foods = (await api<{ foods: EverydayFood[] }>('/foods')).foods;
+		} catch {
+			foodsLoaded = false; // try again next time the tab opens
+		}
+	}
+	const QUICK_FOODS = ['Eggs (boiled)', 'Eggs (scrambled)', 'Chicken breast (cooked)', 'Bacon (cooked)', 'Bread (white)', 'Toast (wholemeal)', 'Milk (semi-skimmed)', 'Rice (white, cooked)', 'Pasta (cooked)', 'Porridge oats (dry)', 'Bananas', 'Apples', 'Potatoes (boiled)'];
+	// Browse by kind of food: tap a category to list what's in it.
+	const CATEGORY_ORDER = ['Eggs', 'Meat & poultry', 'Fish & seafood', 'Dairy', 'Bread, rice & pasta', 'Vegetables', 'Fruit', 'Beans & pulses', 'Nuts & seeds', 'Fats & oils', 'Sweet & spreads', 'Drinks'];
+	let foodCategory = $state('');
+	const categories = $derived(CATEGORY_ORDER.filter((c) => foods.some((f) => f.category === c)));
+	const categoryFoods = $derived(foods.filter((f) => f.category === foodCategory).toSorted((a, b) => a.name.localeCompare(b.name)));
+	const quickFoods = $derived(QUICK_FOODS.map((n) => foods.find((f) => f.name === n)).filter((f): f is EverydayFood => !!f));
+	const matchingFoods = $derived.by(() => {
+		const q = productSearch.trim().toLowerCase();
+		if (!q) return [];
+		const rank = (f: EverydayFood) => (f.name.toLowerCase().startsWith(q) ? 0 : f.name.toLowerCase().includes(q) ? 1 : f.aliases.some((a) => a.toLowerCase().includes(q)) ? 2 : -1);
+		return foods.filter((f) => rank(f) >= 0).toSorted((a, b) => rank(a) - rank(b)).slice(0, 8);
+	});
+
+	/** Pick an everyday food: reuse it if it's already one of your products, otherwise save it (generic, USDA values) and select it. */
+	async function useEveryday(f: EverydayFood) {
+		const have = data.products.find((p) => p.name.toLowerCase() === f.name.toLowerCase());
+		if (have) {
+			useProduct(have);
+			return;
+		}
+		pickingFood = true;
+		try {
+			const saved = await api<Product>('/products', {
+				body: {
+					name: f.name,
+					generic: true,
+					source: 'usda',
+					fromNutritionLabel: true,
+					confidence: 'medium',
+					basisQuantity: 100,
+					basisUnit: 'g',
+					macros: { calories: f.calories, protein: f.protein, carbs: f.carbs, fat: f.fat, fiber: f.fiber },
+					portions: f.portions,
+					notes: `Per 100 g. From USDA FoodData Central (SR Legacy #${f.fdcId}): ${f.usda}.`
+				}
+			});
+			await invalidateAll(); // so it's in your products from now on
+			useProduct(saved);
+		} catch (err) {
+			toast(errorText(err), 'error');
+		} finally {
+			pickingFood = false;
+		}
 	}
 
 	let barcodeBusy = $state(false);
@@ -413,6 +473,8 @@
 	</div>
 </header>
 
+<a class="btn btn-ghost btn-sm mt-2" href="/chat"><Icon name="sparkle" size={16} />Food chat · ask, look up and plan</a>
+
 <!-- Phones: Log food floats above the nav bar, within thumb reach. -->
 <button
 	class="btn btn-primary btn-lg fixed right-4 z-20 rounded-full shadow-lg lg:hidden"
@@ -572,6 +634,7 @@
 	<div class="modal-box">
 		<fieldset disabled={busy || repeating || savingProduct}>
 		<h3 class="text-2xl font-bold">Log food</h3>
+ <button class="btn btn-ghost btn-sm mt-2" onclick={() => startFoodChat({kind: labelResult ? 'product' : 'meal', context: JSON.stringify(labelResult || {name, description: text, macros: estimate?.macros, items: mealItems})})}>Chat about this before logging</button>
 
 		<div role="tablist" class="tabs tabs-box mt-4 grid grid-cols-3">
 			<button role="tab" class="tab" class:tab-active={mode === 'recent'} onclick={() => mode = 'recent'}>Recent</button>
@@ -579,7 +642,7 @@
 				Describe
 			</button>
 			<button role="tab" class="tab" class:tab-active={mode === 'photo'} onclick={() => { mode = 'photo'; choosePhotoKind('meal'); }}>Photo</button>
-			<button role="tab" class="tab" class:tab-active={mode === 'products'} onclick={() => { mode = 'products'; labelResult = null; estimate = null; }}>Products</button>
+			<button role="tab" class="tab" class:tab-active={mode === 'products'} onclick={() => { mode = 'products'; labelResult = null; estimate = null; ensureFoods(); }}>Products</button>
 			<button role="tab" class="tab" class:tab-active={mode === 'recipe'} onclick={() => (mode = 'recipe')}>
 				Recipe
 			</button>
@@ -686,21 +749,58 @@
 		{/if}
 
 		{#if mode === 'products'}
-			<p class="text-base-content/65 mt-4 text-sm">Choose a saved product and enter how much you ate. Calories and macros are calculated from its saved nutrition panel.</p>
+			{#if labelResult}
+				<!-- A food is chosen: keep the amount and quick buttons in view instead of the picker above them. -->
+				<div class="bg-base-200 rounded-box mt-4 flex items-center justify-between gap-2 p-3">
+					<span class="min-w-0 truncate font-semibold">{labelResult.name}</span>
+					<button type="button" class="btn btn-ghost btn-sm" onclick={() => { labelResult = null; estimate = null; savedProductId = ''; }}>Change food</button>
+				</div>
+			{:else}
+			<p class="text-base-content/65 mt-4 text-sm">Pick a food and say how much you ate. Calories and macros are worked out for you.</p>
+			{#if !productSearch.trim() && quickFoods.length}
+				<p class="mt-3 text-sm font-semibold">Everyday foods</p>
+				<div class="mt-1 flex flex-wrap gap-1" aria-label="Everyday foods">
+					{#each quickFoods as f (f.name)}<button type="button" class="btn btn-xs btn-outline border-base-300 rounded-full" disabled={pickingFood} onclick={() => useEveryday(f)}>{f.name}</button>{/each}
+				</div>
+				<p class="text-base-content/60 mt-3 text-xs">Or browse by kind of food:</p>
+				<div class="mt-1 flex flex-wrap gap-1" aria-label="Food categories">
+					{#each categories as c (c)}
+						<button type="button" class="btn btn-xs rounded-full {foodCategory === c ? 'btn-primary' : 'btn-ghost bg-base-200'}" aria-pressed={foodCategory === c} onclick={() => (foodCategory = foodCategory === c ? '' : c)}>{c}</button>
+					{/each}
+				</div>
+				{#if foodCategory}
+					<ul class="divide-base-content/10 mt-2 max-h-56 divide-y overflow-y-auto" aria-label="Foods in {foodCategory}">
+						{#each categoryFoods as f (f.name)}
+							<li><button type="button" class="flex w-full items-center justify-between gap-3 py-2 text-left" disabled={pickingFood} onclick={() => useEveryday(f)}><span>{f.name}</span><span class="tabular text-base-content/60 text-xs">{f.calories} kcal per 100 g</span></button></li>
+						{/each}
+					</ul>
+				{/if}
+			{/if}
 			<div class="mt-3"><BarcodeField onfound={findByBarcode} busy={barcodeBusy} message={barcodeMsg} /></div>
 			<input class="input mt-3 w-full" type="search" aria-label="Search saved products" placeholder="Find oats, yogurt, bread…" bind:value={productSearch} />
 			<ul class="mt-2 max-h-48 divide-y divide-base-content/10 overflow-y-auto">
 				{#each matchingProducts as product (product.id)}
 					<li><button class="flex w-full items-center justify-between gap-3 py-3 text-left" onclick={() => useProduct(product)}><span><span class="block font-semibold">{product.name}</span><span class="text-base-content/60 text-xs">{round(product.macros.calories)} kcal per {product.basisQuantity} {product.basisUnit}</span></span><span class="flex items-center gap-2">{#if product.rating}<span class="badge {RATING_CLASS[product.rating.label]}" title={product.rating.label}>{product.rating.score}%</span>{/if}<span class="btn btn-soft btn-sm">Use</span></span></button></li>
 				{:else}
-					<li class="text-base-content/60 py-4 text-sm">{data.products.length ? 'No matching products.' : 'No saved products yet. Photograph a nutrition panel under Photo → Product label.'}</li>
+					<li class="text-base-content/60 py-4 text-sm">{data.products.length ? 'No matching products.' : 'No saved products yet. Pick an everyday food above, or photograph a nutrition panel under Photo → Product label.'}</li>
 				{/each}
 			</ul>
+			{#if matchingFoods.length}
+				<p class="mt-3 text-sm font-semibold">Everyday foods <span class="text-base-content/50 font-normal">(real USDA values, per 100 g)</span></p>
+				<ul class="divide-base-content/10 mt-1 max-h-48 divide-y overflow-y-auto" aria-label="Matching everyday foods">
+					{#each matchingFoods as f (f.name)}
+						<li><button type="button" class="flex w-full items-center justify-between gap-3 py-2 text-left" disabled={pickingFood} onclick={() => useEveryday(f)}><span>{f.name}</span><span class="tabular text-base-content/60 text-xs">{f.calories} kcal</span></button></li>
+					{/each}
+				</ul>
+			{/if}
+			{/if}
 		{/if}
 
 			{#if (mode === 'photo' || mode === 'products') && labelResult}
+				<div class="flex flex-col">
+					<div class={mode === 'products' ? 'order-2' : 'order-1'}>
 				<label class="mt-4 block"><span class="mb-1 block text-sm font-semibold">Product name</span><input class="input w-full" bind:value={name} placeholder="e.g. My usual porridge oats" /></label>
-				<p class="badge mt-3" class:badge-warning={!labelResult.fromNutritionLabel} class:badge-ghost={labelResult.fromNutritionLabel}>{labelResult.fromNutritionLabel ? 'Read from nutrition panel' : 'Estimated nutrition'}</p>
+				<p class="badge mt-3" class:badge-warning={!labelResult.fromNutritionLabel} class:badge-ghost={labelResult.fromNutritionLabel}>{labelResult.source === 'usda' ? 'USDA FoodData Central values' : labelResult.source === 'openfoodfacts' ? 'From Open Food Facts' : labelResult.fromNutritionLabel ? 'Read from nutrition panel' : 'Estimated nutrition'}</p>
 				{#if shownRating}
 					<div class="bg-base-200 rounded-box mt-3 flex items-center justify-between gap-2 p-3">
 						<span class="text-sm font-semibold">Ingredient rating</span>
@@ -708,7 +808,10 @@
 					</div>
 				{/if}
 				{#if labelResult.ingredients}<p class="text-base-content/65 mt-2 text-sm"><strong>Ingredients:</strong> {labelResult.ingredients}</p>{/if}
-				<p class="text-base-content/65 mt-2 text-sm">{labelResult.notes} Check the scanned values against the pack.</p>
+				<p class="text-base-content/65 mt-2 text-sm">{labelResult.notes}{labelResult.source === 'usda' ? '' : ' Check the scanned values against the pack.'}</p>
+					</div>
+					<details class={mode === 'products' ? 'order-3 mt-3' : 'order-2'} open={mode !== 'products'}>
+						<summary class={mode === 'products' ? 'cursor-pointer text-sm font-semibold' : 'hidden'}>Check or edit the nutrition</summary>
 				<div class="mt-4 grid grid-cols-2 gap-3">
 					<label class="floating-label"><span>Label basis</span><input class="input w-full" type="number" min="0.01" step="any" bind:value={labelResult.basisQuantity} /></label>
 					<label class="floating-label"><span>Unit</span><select class="select w-full" bind:value={labelResult.basisUnit}><option value="g">grams (g)</option><option value="ml">millilitres (ml)</option><option value="serving">servings</option></select></label>
@@ -721,8 +824,24 @@
 				</div>
 				<button class="btn btn-secondary btn-soft mt-3 w-full" disabled={!productValid || (!!savedProductId && !productChanged)} onclick={saveProductForLater}>{savedProductId ? productChanged ? 'Update saved product' : 'Saved in Products' : 'Save product for next time'}</button>
 				<p class="text-base-content/60 mt-1 text-xs">Logging also saves this named product. Its nutrition stays available even if you remove a food log.</p>
+					</details>
+					<div class={mode === 'products' ? 'order-1' : 'order-3'}>
 				<label class="mt-4 block"><span class="mb-1 block text-sm font-semibold">How much did you eat? ({labelResult.basisUnit})</span><input class="input w-full" type="number" min="0.01" step="any" placeholder="Enter your amount" bind:value={labelAmount} /></label>
+				{#if labelResult.basisUnit !== 'serving'}
+					<div class="mt-2 flex flex-wrap gap-1" aria-label="Quick amounts">
+						{#each labelResult.portions ?? [] as q (q.label)}
+							<button type="button" class="btn btn-xs btn-primary btn-soft" onclick={() => (labelAmount = round((labelAmount || 0) + q.grams, 1))}>+ {q.label} ({q.grams} {labelResult.basisUnit})</button>
+						{/each}
+						{#each [50, 100, 150] as g (g)}
+							<button type="button" class="btn btn-xs btn-outline border-base-300" onclick={() => (labelAmount = round((labelAmount || 0) + g, 1))}>+ {g} {labelResult.basisUnit}</button>
+						{/each}
+						{#if labelAmount}<button type="button" class="btn btn-xs btn-ghost" onclick={() => (labelAmount = 0)}>Clear</button>{/if}
+					</div>
+					{#if labelResult.portions?.length}<p class="text-base-content/50 mt-1 text-xs">Tap to add up amounts, e.g. two taps for two eggs.</p>{/if}
+				{/if}
 				{#if labelValid}<div class="mt-3"><MacroLine m={labelMacros} /></div>{/if}
+					</div>
+				</div>
 			{/if}
 
 		{#if mode === 'recipe'}

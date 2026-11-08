@@ -1,12 +1,13 @@
 // Mirrors backend/internal/models. Keep in sync when you change the Go structs.
 export interface Macros {
+ saturatedFat?: number | null;
 	calories: number;
 	protein: number;
 	carbs: number;
 	fat: number;
 	fiber: number;
 }
-export type MacroKey = keyof Macros;
+export type MacroKey = Exclude<keyof Macros, 'saturatedFat'>;
 export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
 export const MEAL_TYPES: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
@@ -46,9 +47,10 @@ export interface Scan {
 	basisQuantity?: number;
 	basisUnit?: 'g' | 'ml' | 'serving';
 	macros: Macros;
-	source: 'saved' | 'openfoodfacts' | 'photo';
+	source: 'saved' | 'openfoodfacts' | 'photo' | 'ai';
 	productId?: string;
 	notes?: string;
+	generic?: boolean;
 	warning?: string;
 	createdAt?: string;
 	rating?: ProductRating;
@@ -60,6 +62,8 @@ export interface WeightEntry {
 }
 
 export interface SavedMeal {
+ source?: string;
+ notes?: string;
 	id: string;
 	name: string;
 	mealType: 'breakfast' | 'lunch' | 'dinner' | 'snack';
@@ -138,13 +142,33 @@ export interface MealItem {
 	quantity: string;
 }
 
+export interface Portion {
+	label: string;
+	grams: number;
+}
+
+export interface EverydayFood {
+	name: string;
+	aliases: string[];
+	category: string;
+	calories: number;
+	protein: number;
+	carbs: number;
+	fat: number;
+	fiber: number;
+	portions: Portion[];
+	fdcId: number;
+	usda: string;
+}
+
 export interface LabelEstimate extends Estimate {
+	portions?: Portion[];
 	ingredients: string;
 	basisQuantity: number;
 	basisUnit: 'g' | 'ml' | 'serving';
 	fromNutritionLabel: boolean;
 	barcode?: string;
-	source?: '' | 'openfoodfacts';
+	source?: '' | 'openfoodfacts' | 'usda' | 'ai';
 }
 
 export interface RatingFactor {
@@ -158,12 +182,14 @@ export interface ProductRating {
 	at?: string;
 	base: number;
 	provisional?: boolean;
+ provisionalReason?: string;
 	score: number;
 	label: 'excellent' | 'good' | 'fair' | 'poor' | 'avoid';
 	factors: RatingFactor[];
 }
 
 export interface Product extends LabelEstimate {
+	generic?: boolean;
 	rating?: ProductRating;
 	id: string;
 	createdAt: string;

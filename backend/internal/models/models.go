@@ -3,31 +3,44 @@ package models
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 )
 
 // Macros are always per serving unless stated otherwise.
 type Macros struct {
-	Calories float64 `json:"calories"`
-	Protein  float64 `json:"protein"`
-	Carbs    float64 `json:"carbs"`
-	Fat      float64 `json:"fat"`
-	Fiber    float64 `json:"fiber"`
+	SaturatedFat *float64 `json:"saturatedFat,omitempty"`
+	Calories     float64  `json:"calories"`
+	Protein      float64  `json:"protein"`
+	Carbs        float64  `json:"carbs"`
+	Fat          float64  `json:"fat"`
+	Fiber        float64  `json:"fiber"`
 }
 
 func (m Macros) Add(o Macros) Macros {
+	var saturated *float64
+	if m.SaturatedFat != nil && o.SaturatedFat != nil {
+		v := *m.SaturatedFat + *o.SaturatedFat
+		saturated = &v
+	}
 	return Macros{
-		Calories: m.Calories + o.Calories,
-		Protein:  m.Protein + o.Protein,
-		Carbs:    m.Carbs + o.Carbs,
-		Fat:      m.Fat + o.Fat,
-		Fiber:    m.Fiber + o.Fiber,
+		SaturatedFat: saturated,
+		Calories:     m.Calories + o.Calories,
+		Protein:      m.Protein + o.Protein,
+		Carbs:        m.Carbs + o.Carbs,
+		Fat:          m.Fat + o.Fat,
+		Fiber:        m.Fiber + o.Fiber,
 	}
 }
 
 func (m Macros) Scale(f float64) Macros {
-	return Macros{m.Calories * f, m.Protein * f, m.Carbs * f, m.Fat * f, m.Fiber * f}
+	out := Macros{Calories: m.Calories * f, Protein: m.Protein * f, Carbs: m.Carbs * f, Fat: m.Fat * f, Fiber: m.Fiber * f}
+	if m.SaturatedFat != nil {
+		v := *m.SaturatedFat * f
+		out.SaturatedFat = &v
+	}
+	return out
 }
 
 type Profile struct {
@@ -51,6 +64,8 @@ type Profile struct {
 // SavedMeal is a named group of foods (e.g. 2 Weetabix + oats + protein
 // powder) that can be logged again in one go or fixed into a meal plan slot.
 type SavedMeal struct {
+	Source    string     `json:"source,omitempty"`
+	Notes     string     `json:"notes,omitempty"`
 	ID        string     `json:"id"`
 	Name      string     `json:"name"`
 	MealType  string     `json:"mealType"` // usual slot: breakfast | lunch | dinner | snack
@@ -179,7 +194,12 @@ type Product struct {
 	CreatedAt          time.Time `json:"createdAt"`
 	UpdatedAt          time.Time `json:"updatedAt"`
 	Barcode            string    `json:"barcode,omitempty"` // EAN/UPC digits, checksum-verified
-	Source             string    `json:"source,omitempty"`  // "" (label/manual) | "openfoodfacts"
+	// Generic marks a whole food with no pack, like carrots or potatoes: no barcode or
+	// ingredients label is needed, and its one ingredient is the food itself.
+	Generic bool `json:"generic,omitempty"`
+	// Portions are typical weights for logging by piece ("1 large" egg = 50 g), when known.
+	Portions []Portion `json:"portions,omitempty"`
+	Source   string    `json:"source,omitempty"` // "" (label/manual) | "openfoodfacts" | "usda" | "ai"
 	// Rating is computed on the fly from Ingredients and Macros; never stored.
 	Rating *ProductRating `json:"rating,omitempty"`
 }
@@ -200,12 +220,19 @@ type Scan struct {
 	BasisQuantity float64        `json:"basisQuantity,omitempty"` // nutrition is per this much
 	BasisUnit     string         `json:"basisUnit,omitempty"`     // g | ml | serving
 	Macros        Macros         `json:"macros"`
+	Generic       bool           `json:"generic,omitempty"`   // a whole food with no pack (see Product.Generic)
 	Source        string         `json:"source"`              // saved | openfoodfacts | photo
 	ProductID     string         `json:"productId,omitempty"` // set when it is already one of your products
 	Notes         string         `json:"notes,omitempty"`
 	Warning       string         `json:"warning,omitempty"` // ingredients missing or not in English, so the rating is provisional
 	CreatedAt     time.Time      `json:"createdAt"`
 	Rating        *ProductRating `json:"rating,omitempty"` // computed, never stored
+}
+
+// Portion is a typical weight of one piece, slice or measure of a food.
+type Portion struct {
+	Label string  `json:"label"` // e.g. "1 large"
+	Grams float64 `json:"grams"`
 }
 
 // ProductRating scores a product 0–100 (higher is better) with the reasons why.
@@ -217,10 +244,11 @@ type ProductRating struct {
 	Base int       `json:"base"` // every product starts here before points are added or removed
 	// Provisional means the ingredients weren't available or couldn't be fully checked,
 	// so additives may have been missed. Get the ingredients to firm the rating up.
-	Provisional bool           `json:"provisional,omitempty"`
-	Score       int            `json:"score"`
-	Label       string         `json:"label"` // excellent | good | fair | poor | avoid
-	Factors     []RatingFactor `json:"factors"`
+	ProvisionalReason string         `json:"provisionalReason,omitempty"`
+	Provisional       bool           `json:"provisional,omitempty"`
+	Score             int            `json:"score"`
+	Label             string         `json:"label"` // excellent | good | fair | poor | avoid
+	Factors           []RatingFactor `json:"factors"`
 }
 
 // RatingSettings are one person's tweaks to the rating rules. Empty means the
@@ -324,4 +352,8 @@ type PantryItem struct {
 	Category string    `json:"category"`
 	Source   string    `json:"source"` // manual | photo
 	AddedAt  time.Time `json:"addedAt"`
+}
+
+func (m Macros) ValidSaturatedFat() bool {
+	return m.SaturatedFat == nil || (!math.IsNaN(*m.SaturatedFat) && !math.IsInf(*m.SaturatedFat, 0) && *m.SaturatedFat >= 0 && *m.SaturatedFat <= m.Fat)
 }

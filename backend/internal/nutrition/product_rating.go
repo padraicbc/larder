@@ -38,7 +38,11 @@ func RateProductWith(p models.Product, cfg models.RatingSettings) *models.Produc
 
 	// A rating needs both halves. Ingredients alone can't see how energy-dense or
 	// protein-rich a food is; nutrition alone can't see additives or added sugar.
-	items := splitIngredients(p.Ingredients)
+	ingredients := p.Ingredients
+	if strings.TrimSpace(ingredients) == "" && p.Generic {
+		ingredients = p.Name // a carrot is its own ingredients list
+	}
+	items := splitIngredients(ingredients)
 	if len(items) == 0 || !HasNutrition(p) {
 		return nil
 	}
@@ -55,7 +59,17 @@ func RateProductWith(p models.Product, cfg models.RatingSettings) *models.Produc
 	}
 	score = min(max(score, 0), 100)
 	sort.SliceStable(factors, func(i, j int) bool { return abs(factors[i].Points) > abs(factors[j].Points) })
-	return &models.ProductRating{Rules: RatingRules, At: time.Now().UTC(), Base: base, Score: score, Label: ratingLabel(score), Factors: factors}
+	reason := ""
+	if p.Source == "ai" {
+		reason = "AI estimates have not been verified against the package. Ingredients or nutrition may differ."
+	}
+	if p.Macros.SaturatedFat == nil && p.Macros.Fat > 0 {
+		reason += " Saturated fat is missing. Add it from the nutrition label to complete this rating."
+	}
+	if p.BasisUnit == "serving" {
+		reason += " Nutrition is per serving; a weight or volume basis is needed to score it per 100 g/ml."
+	}
+	return &models.ProductRating{ProvisionalReason: strings.TrimSpace(reason), Rules: RatingRules, At: time.Now().UTC(), Base: base, Provisional: p.Source == "ai" || (p.Macros.SaturatedFat == nil && p.Macros.Fat > 0) || p.BasisUnit == "serving", Score: score, Label: ratingLabel(score), Factors: factors}
 }
 
 // ratingBase is where every product starts: a short list of plain ingredients
@@ -68,7 +82,8 @@ const ratingBase = 90
 // v3: additive count; ingredients read in English first.
 // v4: processing markers (yeast extract, cheese powder, dextrose, chicory fibre...) join the additive count.
 // v5: no rating at all unless both ingredients and nutrition are known.
-const RatingRules = 5
+// v6: saturated fat penalties; missing saturated fat is provisional.
+const RatingRules = 6
 
 func ratingLabel(score int) string {
 	switch {
@@ -282,6 +297,18 @@ func rateIngredients(items []string, rs *ruleSet) {
 }
 
 func rateNutrition(per100 models.Macros, rs *ruleSet) {
+	if per100.SaturatedFat != nil {
+		v := *per100.SaturatedFat
+		switch {
+		case v > 20:
+			rs.rule("saturated-very-high", -30, "A large amount of saturated fat per 100 g/ml. This rating uses a stronger penalty as the concentration increases.", "Very high saturated fat (%.1fg per 100)", v)
+		case v > 10:
+			rs.rule("saturated-high", -20, "Saturated fat is scored separately from total fat, with a larger penalty at higher concentrations.", "High saturated fat (%.1fg per 100)", v)
+		case v > 5:
+			rs.rule("saturated-mid", -12, "Saturated fat is scored separately from total fat.", "Elevated saturated fat (%.1fg per 100)", v)
+		}
+	}
+
 	switch {
 	case per100.Calories > 450:
 		rs.rule("energy-high", -8, "Lots of calories in a small weight makes it easy to eat more than you meant to without feeling full.", "Very energy-dense (%.0f kcal per 100)", per100.Calories)
@@ -289,7 +316,7 @@ func rateNutrition(per100 models.Macros, rs *ruleSet) {
 		rs.rule("energy-mid", -4, "Fairly calorie-heavy for its weight, so portions matter.", "Energy-dense (%.0f kcal per 100)", per100.Calories)
 	}
 	if per100.Fat > 30 {
-		rs.rule("fat-high", -4, "Fat is calorie-dense. We can't see how much is saturated, so this is only a mild flag.", "High in fat (%.0fg per 100)", per100.Fat)
+		rs.rule("fat-high", -4, "Fat is calorie-dense, so this is a mild flag. Saturated fat is scored separately when known.", "High in fat (%.0fg per 100)", per100.Fat)
 	}
 	switch {
 	case per100.Fiber >= 6:
@@ -345,12 +372,13 @@ func RateScan(sc models.Scan) *models.ProductRating {
 
 // RateScanWith is RateScan with one person's tweaks to the rules applied.
 func RateScanWith(sc models.Scan, cfg models.RatingSettings) *models.ProductRating {
-	p := models.Product{Ingredients: sc.Ingredients}
+	p := models.Product{Name: sc.Name, Ingredients: sc.Ingredients, Generic: sc.Generic, Source: sc.Source}
 	if sc.HasNutrition {
 		p.BasisQuantity, p.BasisUnit, p.Macros = sc.BasisQuantity, sc.BasisUnit, sc.Macros
 	}
 	r := RateProductWith(p, cfg)
 	if r != nil && sc.Warning != "" {
+		r.ProvisionalReason = strings.TrimSpace(r.ProvisionalReason + " " + sc.Warning)
 		r.Provisional = true // ingredients present but in another language: some additives may be missed
 	}
 	return r
@@ -358,8 +386,12 @@ func RateScanWith(sc models.Scan, cfg models.RatingSettings) *models.ProductRati
 
 // ScanFromProduct shows one of your saved products as a scan.
 func ScanFromProduct(p models.Product) models.Scan {
+	source := "saved"
+	if p.Source == "ai" {
+		source = "ai"
+	}
 	return models.Scan{Name: p.Name, Barcode: p.Barcode, Ingredients: p.Ingredients, HasNutrition: true,
-		BasisQuantity: p.BasisQuantity, BasisUnit: p.BasisUnit, Macros: p.Macros, Source: "saved", ProductID: p.ID, Notes: p.Notes, CreatedAt: p.CreatedAt}
+		BasisQuantity: p.BasisQuantity, BasisUnit: p.BasisUnit, Macros: p.Macros, Source: source, ProductID: p.ID, Notes: p.Notes, Generic: p.Generic, CreatedAt: p.CreatedAt}
 }
 
 // ScanFromLabel shows an Open Food Facts result as a scan.

@@ -82,6 +82,10 @@ func LookupOpenFoodFacts(ctx context.Context, hc *http.Client, base, barcode str
 		return out, errors.New("Open Food Facts has this product but not its full nutrition; photograph the label instead")
 	}
 	fiber, hasFib := offNum(n, "fiber_100g")
+	var saturated *float64
+	if v, ok := offNum(n, "saturated-fat_100g"); ok && v <= fat {
+		saturated = &v
+	}
 
 	name := strings.TrimSpace(p.Name)
 	if name == "" {
@@ -123,7 +127,7 @@ func LookupOpenFoodFacts(ctx context.Context, hc *http.Client, base, barcode str
 	out = LabelEstimate{
 		Estimate: Estimate{
 			Name:       name,
-			Macros:     models.Macros{Calories: kcal, Protein: protein, Carbs: carbs, Fat: fat, Fiber: fiber},
+			Macros:     models.Macros{Calories: kcal, Protein: protein, Carbs: carbs, Fat: fat, Fiber: fiber, SaturatedFat: saturated},
 			Confidence: "medium",
 			Notes:      notes,
 		},

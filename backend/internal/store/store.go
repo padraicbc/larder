@@ -1019,3 +1019,55 @@ func (s *Store) SetRatingSettings(uid string, r models.RatingSettings) error {
 	s.mut(uid).RatingRules = r
 	return s.saveLocked()
 }
+
+// AddProducts adds products that are new to this account and NEVER overwrites one that
+// exists: a product whose barcode or name matches an existing one (or an earlier one in
+// the same batch) is skipped. The check runs under the lock, so it holds even if two
+// imports race.
+func (s *Store) AddProducts(uid string, ps []models.Product, now time.Time) (added, skipped []models.Product, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u := s.mut(uid)
+	barcodes, names := map[string]bool{}, map[string]bool{}
+	for _, e := range u.Products {
+		if e.Barcode != "" {
+			barcodes[e.Barcode] = true
+		}
+		names[strings.ToLower(strings.TrimSpace(e.Name))] = true
+	}
+	for _, p := range ps {
+		p.Rating = nil
+		p.Name = strings.TrimSpace(p.Name)
+		key := strings.ToLower(p.Name)
+		if names[key] || (p.Barcode != "" && barcodes[p.Barcode]) {
+			skipped = append(skipped, p)
+			continue
+		}
+		p.ID, p.CreatedAt, p.UpdatedAt = NewID(), now, now
+		u.Products[p.ID] = p
+		names[key] = true
+		if p.Barcode != "" {
+			barcodes[p.Barcode] = true
+		}
+		added = append(added, p)
+	}
+	if len(added) == 0 {
+		return added, skipped, nil
+	}
+	return added, skipped, s.saveLocked()
+}
+
+// CreateMeal adds a reviewed meal without replacing an existing meal of the same name.
+func (s *Store) CreateMeal(uid string, m models.SavedMeal, now time.Time) (models.SavedMeal, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	u := s.mut(uid)
+	for _, existing := range u.Meals {
+		if strings.EqualFold(strings.TrimSpace(m.Name), existing.Name) {
+			return models.SavedMeal{}, ErrNameTaken
+		}
+	}
+	m.ID = ""
+	saved := putMealLocked(u, m, now)
+	return saved, s.saveLocked()
+}

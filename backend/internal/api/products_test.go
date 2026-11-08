@@ -161,3 +161,25 @@ func TestSetProductIngredients(t *testing.T) {
 		t.Error("another account could edit this product")
 	}
 }
+
+func TestSaturatedFatProductRoundTrip(t *testing.T) {
+	c0, _ := newTestServer(t)
+	c := signUp(t, c0.srv, "saturated@example.com")
+	sat := 27.0
+	p := models.Product{Name: "Vintage cheese", Ingredients: "Milk, salt, cultures, rennet", BasisQuantity: 100, BasisUnit: "g", Macros: models.Macros{Calories: 410, Protein: 25, Fat: 35, SaturatedFat: &sat}}
+	var saved models.Product
+	if code := c.do("POST", "/api/products", p, &saved); code != 200 {
+		t.Fatalf("save: %d", code)
+	}
+	var products []models.Product
+	c.do("GET", "/api/products", nil, &products)
+	if len(products) != 1 || products[0].Macros.SaturatedFat == nil || *products[0].Macros.SaturatedFat != 27 || products[0].Rating.Score != 62 {
+		t.Fatalf("round trip: %+v", products)
+	}
+	for _, v := range []float64{-1, 36} {
+		p.Macros.SaturatedFat = &v
+		if code := c.do("POST", "/api/products", p, nil); code != 400 {
+			t.Fatalf("accepted invalid saturated fat %v: %d", v, code)
+		}
+	}
+}

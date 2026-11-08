@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { startFoodChat } from '#lib/start-food-chat.ts';
 	import { invalidateAll } from '$app/navigation';
 	import { ApiError, api, errorText, upload } from '#lib/api.ts';
 	import { round } from '#lib/format.ts';
@@ -8,6 +9,8 @@
 	import BarcodeField from '#lib/components/BarcodeField.svelte';
 	import RatingBadge from '#lib/components/RatingBadge.svelte';
 	import Icon from '#lib/components/Icon.svelte';
+ import ProductAI from '#lib/components/ProductAI.svelte';
+ import { mergeProductSuggestion } from '#lib/product-ai.ts';
 
 	let { data } = $props();
 
@@ -22,7 +25,7 @@
 	const missingNut = $derived(!!result && !result.hasNutrition);
 	let nutInput = $state<HTMLInputElement>();
 	let showNutForm = $state(false);
-	let nut = $state<{ calories: number | null; protein: number | null; carbs: number | null; fat: number | null; fiber: number | null; unit: 'g' | 'ml' }>({ calories: null, protein: null, carbs: null, fat: null, fiber: null, unit: 'g' });
+	let nut = $state<{ calories: number | null; protein: number | null; carbs: number | null; fat: number | null; saturatedFat: number | null; fiber: number | null; unit: 'g' | 'ml' }>({ calories: null, protein: null, carbs: null, fat: null, saturatedFat: null, fiber: null, unit: 'g' });
 	const nutValid = $derived([nut.calories, nut.protein, nut.carbs, nut.fat, nut.fiber].some((v) => (v ?? 0) > 0));
 	let editText = $state(''); // the ingredients as you can correct them
 	let recalculating = $state(false);
@@ -32,6 +35,14 @@
 	const edited = $derived(editText.trim() !== (result?.ingredients ?? '').trim());
 	let completing = $state<Scan | null>(null); // a product we already have, whose ingredients we're adding from a photo
 	let saving = $state(false);
+ let pendingAI = $state(false);
+ async function useAI(suggestion: Scan) {
+ const base = result;
+ const merged = mergeProductSuggestion(base, suggestion);
+ if (!base && pendingBarcode) merged.barcode = pendingBarcode;
+ result = await api<Scan>('/scan/rate', {body: merged});
+ pendingAI = true;
+ }
 	let dialog = $state<HTMLDialogElement>();
 	$effect(() => {
 		if (!dialog) return;
@@ -74,7 +85,8 @@
 	const SOURCE: Record<Scan['source'], string> = {
 		saved: 'One of your products',
 		openfoodfacts: 'From Open Food Facts',
-		photo: 'Read from your photo'
+		photo: 'Read from your photo',
+ ai: 'AI estimate — unverified'
 	};
 	const lowers = $derived(result?.rating?.factors.filter((f) => f.points < 0) ?? []);
 	const raises = $derived(result?.rating?.factors.filter((f) => f.points > 0) ?? []);
@@ -82,6 +94,7 @@
 	const BAR: Record<string, string> = { excellent: 'progress-success', good: 'progress-success', fair: 'progress-warning', poor: 'progress-error', avoid: 'progress-error' };
 
 	async function checkBarcode(code: string) {
+ pendingAI = false;
 		busy = true;
 		message = '';
 		photoError = '';
@@ -234,7 +247,7 @@
 		if (!result || !nutValid || busy) return;
 		busy = true;
 		try {
-			const macros = { calories: nut.calories ?? 0, protein: nut.protein ?? 0, carbs: nut.carbs ?? 0, fat: nut.fat ?? 0, fiber: nut.fiber ?? 0 };
+			const macros = { calories: nut.calories ?? 0, protein: nut.protein ?? 0, carbs: nut.carbs ?? 0, fat: nut.fat ?? 0, saturatedFat: nut.saturatedFat, fiber: nut.fiber ?? 0 };
 			await applyUpdate(result, { hasNutrition: true, basisQuantity: 100, basisUnit: nut.unit, macros }, (s) =>
 				s.rating ? 'Nutrition saved. Here is the rating.' : 'Nutrition saved. A rating also needs the ingredients.'
 			);
@@ -273,6 +286,7 @@
 		saving = true;
 		try {
 			result = await api<Scan>('/scans', { body: result });
+ pendingAI = false;
 			await invalidateAll();
 			toast(result?.productId ? 'Saved to Products. Look it up here any time.' : 'Saved as a draft. Add the missing ingredients or nutrition to finish it.');
 		} catch (e) {
@@ -344,7 +358,9 @@
 			</button>
 		</div>
 	{/if}
-	{#if photoError}<div role="alert" class="alert alert-error mt-2 text-sm font-semibold shadow-md"><span>{photoError}</span></div>{/if}
+	<button class="btn btn-sm mt-3" onclick={() => startFoodChat({kind: 'product', barcode: pendingBarcode, context: JSON.stringify({name:q,barcode:pendingBarcode,request:'Help me identify this food and look up its nutrition and ingredients. Ask for the brand and variety if needed.'})})}>Ask in Food chat · web lookup and follow-up questions</button>
+ <ProductAI name={q} onaccept={useAI} />
+ {#if photoError}<div role="alert" class="alert alert-error mt-2 text-sm font-semibold shadow-md"><span>{photoError}</span></div>{/if}
 
 	<div class="mt-6">
 		<label class="text-sm font-semibold" for="shop-search">Look up something you’ve saved</label>
@@ -369,7 +385,7 @@
 				{/each}
 			</ul>
 		{:else if searched && !searching}
-			<p class="text-base-content/60 mt-2 text-sm">Nothing saved matches “{q.trim()}”. Scan its barcode or photograph the ingredients to add it.</p>
+			<p class="text-base-content/60 mt-2 text-sm">Nothing saved matches “{q.trim()}”. Scan its barcode or photograph the ingredients to add it, or <a class="link" href="/products#generic">add it as a generic food</a> if it’s a whole food like carrots.</p>
 		{/if}
 	</div>
 </div>
@@ -392,14 +408,16 @@
 		{/if}
 		{#if result.barcode}<p class="text-base-content/50 font-mono text-xs">Barcode {result.barcode}</p>{/if}
 
-		{#if result.rating && (result.warning || result.rating.provisional)}
+		<button class="btn btn-sm mt-3" onclick={() => startFoodChat({kind: 'product', productId: result?.productId, barcode: result?.barcode, context: JSON.stringify({name: result?.name, barcode: result?.barcode, ingredients: result?.ingredients, basisQuantity: result?.basisQuantity, basisUnit: result?.basisUnit, macros: result?.macros})})}>Discuss this in Food chat</button>
+ <ProductAI name={result.name} onaccept={useAI} />
+ {#if result.rating && (result.warning || result.rating.provisional)}
 			<div role="alert" class="alert alert-warning mt-3 text-sm shadow-md">
 				<div>
 					<p class="font-bold">Provisional rating</p>
-					<p>{result.warning || 'The ingredients aren’t known, so additives and sugars can’t be ruled out.'}</p>
-					<button class="btn btn-sm mt-2" disabled={busy} onclick={() => addIngredients(result)}>
+					<p>{result.rating.provisionalReason || result.warning || 'Some ingredients or nutrition data could not be fully checked.'}</p>
+					{#if result.warning}<button class="btn btn-sm mt-2" disabled={busy} onclick={() => addIngredients(result)}>
 						{#if busy}<span class="loading loading-spinner loading-sm"></span>Reading…{:else}<Icon name="camera" size={16} />Photograph the ingredients{/if}
-					</button>
+					</button>{/if}
 				</div>
 			</div>
 		{/if}
@@ -448,7 +466,8 @@
 								<label class="text-xs">Protein (g)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.protein} /></label>
 								<label class="text-xs">Carbs (g)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.carbs} /></label>
 								<label class="text-xs">Fat (g)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.fat} /></label>
-								<label class="text-xs">Fibre (g)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.fiber} /></label>
+								<label class="text-xs">Saturated fat (g, if known)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.saturatedFat} /></label>
+ <label class="text-xs">Fibre (g)<input class="input input-sm tabular mt-1 w-full" type="number" min="0" step="any" inputmode="decimal" bind:value={nut.fiber} /></label>
 							</div>
 							<button class="btn btn-sm btn-primary mt-3" disabled={!nutValid || busy} onclick={saveNutrition}>Save nutrition</button>
 						</div>
@@ -460,7 +479,7 @@
 		{#if result.hasNutrition && result.basisQuantity}
 			{@const per = result.basisUnit === 'serving' ? 1 : 100 / result.basisQuantity}
 			<p class="tabular text-base-content/70 mt-3 text-sm">
-				Per {result.basisUnit === 'serving' ? 'serving' : `100 ${result.basisUnit}`}: {round(result.macros.calories * per)} kcal · P {round(result.macros.protein * per, 1)} · C {round(result.macros.carbs * per, 1)} · F {round(result.macros.fat * per, 1)} · Fibre {round(result.macros.fiber * per, 1)}
+				Per {result.basisUnit === 'serving' ? 'serving' : `100 ${result.basisUnit}`}: {round(result.macros.calories * per)} kcal · P {round(result.macros.protein * per, 1)} · C {round(result.macros.carbs * per, 1)} · F {round(result.macros.fat * per, 1)}{#if result.macros.saturatedFat != null} · Saturates {round(result.macros.saturatedFat * per, 1)} g{/if} · Fibre {round(result.macros.fiber * per, 1)}
 			</p>
 		{/if}
 
@@ -489,7 +508,9 @@
 		{/if}
 
 		<div class="mt-4 flex flex-wrap gap-2">
-			{#if result.productId}
+			{#if pendingAI}
+ <button class="btn btn-primary btn-sm" disabled={saving || !result.name.trim()} onclick={save}>Save AI estimate</button>
+ {:else if result.productId}
 				<span class="badge badge-success badge-soft self-center">In your products</span>
 				<a class="btn btn-ghost btn-sm" href="/products">View in Products</a>
 			{:else if result.id}

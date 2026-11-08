@@ -63,7 +63,7 @@
 
 		{#if rating.provisional}
 			<p class="alert alert-warning mt-3 text-sm font-semibold" role="note">
-				Provisional: the ingredients weren’t fully available, so additives and sugars may have been missed. Photograph the ingredients to firm this up.
+				Provisional: {rating.provisionalReason || "Some ingredients or nutrition data could not be fully checked."}
 			</p>
 		{/if}
 

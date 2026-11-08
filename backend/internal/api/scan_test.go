@@ -3,10 +3,12 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/padraicbc/larder/internal/models"
+	"github.com/padraicbc/larder/internal/nutrition"
 )
 
 func TestShopScan(t *testing.T) {
@@ -143,6 +145,33 @@ func TestShopScan(t *testing.T) {
 	}
 }
 
+func TestEverydayFoodsEndpoint(t *testing.T) {
+	c0, _ := newTestServer(t)
+	c := signUp(t, c0.srv, "foods@example.com")
+	var res struct {
+		Source string                  `json:"source"`
+		Foods  []nutrition.GenericFood `json:"foods"`
+	}
+	if code := c.do("GET", "/api/foods", nil, &res); code != 200 || len(res.Foods) < 50 || !strings.Contains(res.Source, "USDA") {
+		t.Fatalf("all foods = %d %+v", code, res.Source)
+	}
+	var some struct {
+		Foods []nutrition.GenericFood `json:"foods"`
+	}
+	c.do("GET", "/api/foods?q=tomat", nil, &some)
+	if len(some.Foods) != 1 || some.Foods[0].Name != "Tomatoes" || some.Foods[0].Calories != 18 {
+		t.Errorf("search: %+v", some.Foods)
+	}
+	// A food picked from the list saves as a generic product with its USDA source, and is rated.
+	f := some.Foods[0]
+	var saved models.Product
+	body := models.Product{Name: f.Name, Generic: true, Source: "usda", BasisQuantity: 100, BasisUnit: "g", FromNutritionLabel: true, Notes: "From USDA FoodData Central",
+		Macros: models.Macros{Calories: f.Calories, Protein: f.Protein, Carbs: f.Carbs, Fat: f.Fat, Fiber: f.Fiber}}
+	if code := c.do("POST", "/api/products", body, &saved); code != 200 || saved.Source != "usda" || saved.Barcode != "" || saved.Ingredients != "Tomatoes" || saved.Rating == nil {
+		t.Fatalf("saving a listed food = %d %+v", code, saved)
+	}
+}
+
 func TestShopSearch(t *testing.T) {
 	c0, _ := newTestServer(t)
 	c := signUp(t, c0.srv, "search@example.com")
@@ -258,5 +287,47 @@ func TestRatingRulesAreYours(t *testing.T) {
 	c.do("PUT", "/api/rating-settings", models.RatingSettings{}, &reset)
 	if score(c) != before || len(reset.Settings.Points) != 0 || len(reset.Settings.Custom) != 0 {
 		t.Errorf("reset: %d vs %d, %+v", score(c), before, reset.Settings)
+	}
+}
+
+func TestSavedCheeseLookupCalculatesFromFreshNutrition(t *testing.T) {
+	saturated := 27.0
+	hits := 0
+	off := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		writeJSON(w, 200, map[string]any{"status": 1, "product": map[string]any{"product_name": "Vintage cheese", "ingredients_text_en": "Milk, salt, cultures, rennet", "nutriments": map[string]float64{"energy-kcal_100g": 410, "proteins_100g": 25, "carbohydrates_100g": 0, "fat_100g": 35, "saturated-fat_100g": saturated}}})
+	}))
+	defer off.Close()
+	c0, s := newTestServer(t)
+	s.OFFBase, s.HTTP = off.URL, off.Client()
+	c := signUp(t, c0.srv, "fresh-cheese@example.com")
+	c.do("PUT", "/api/settings", map[string]any{"llm": map[string]string{"provider": "mock"}, "lookup": models.LookupSettings{OpenFoodFacts: true}}, nil)
+	// An old saved product lacks saturated fat, even though the online label has it.
+	p := models.Product{Name: "Vintage cheese", Barcode: "96385074", Ingredients: "Milk, salt, cultures, rennet", BasisQuantity: 25, BasisUnit: "g", Macros: models.Macros{Calories: 102.5, Protein: 6.25, Fat: 8.75}, Rating: &models.ProductRating{Score: 92}}
+	var saved models.Product
+	c.do("POST", "/api/products", p, &saved)
+	for _, tc := range []struct {
+		sat   float64
+		score int
+	}{{27, 62}, {15, 72}} {
+		saturated = tc.sat
+		var sc models.Scan
+		if code := c.do("GET", "/api/scan/barcode/96385074", nil, &sc); code != 200 || sc.Rating == nil || sc.Rating.Score != tc.score || sc.Rating.Rules != nutrition.RatingRules || sc.Macros.SaturatedFat == nil || *sc.Macros.SaturatedFat != tc.sat/4 {
+			t.Fatalf("scan: %d %+v", code, sc)
+		}
+		var lookup struct {
+			Product models.Product `json:"product"`
+		}
+		if code := c.do("GET", "/api/products/lookup/96385074", nil, &lookup); code != 200 || lookup.Product.Rating == nil || lookup.Product.Rating.Score != tc.score {
+			t.Fatalf("product lookup: %d %+v", code, lookup)
+		}
+	}
+	if hits != 4 {
+		t.Fatalf("lookup should refresh missing nutrient each time: hits %d", hits)
+	}
+	u, _ := s.Store.UserByEmail("fresh-cheese@example.com")
+	stored, err := s.Store.ProductByBarcode(u.ID, "96385074")
+	if err != nil || stored.Rating != nil || stored.Macros.SaturatedFat != nil {
+		t.Fatalf("lookup must not persist a score or change saved nutrition: %+v %v", stored, err)
 	}
 }

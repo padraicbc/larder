@@ -43,3 +43,20 @@ func TestReadProductLabelRejectsUnusableLabels(t *testing.T) {
 		t.Fatal("accepted no photo")
 	}
 }
+
+func TestReadSaturatedFat(t *testing.T) {
+	images := []llm.Image{{MediaType: "image/png", Data: []byte{1}}}
+	for _, tc := range []struct {
+		value string
+		valid bool
+	}{{"27", true}, {"0", true}, {"null", true}, {"36", false}, {"-1", false}} {
+		reply := `{"name":"Vintage cheese","ingredients":"Milk, salt","basisQuantity":100,"basisUnit":"g","fromNutritionLabel":true,"macros":{"calories":410,"protein":25,"fat":35,"saturatedFat":` + tc.value + `}}`
+		got, err := ReadProductLabel(context.Background(), mealVisionReply(reply), images)
+		if (err == nil) != tc.valid {
+			t.Fatalf("saturated fat %s: %v", tc.value, err)
+		}
+		if tc.value == "27" && (got.Macros.SaturatedFat == nil || *got.Macros.SaturatedFat != 27) {
+			t.Fatal("saturated fat lost")
+		}
+	}
+}

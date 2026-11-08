@@ -34,10 +34,12 @@ func (s *Server) scanBarcode(w http.ResponseWriter, r *http.Request) {
 				sc.Ingredients = saved.Ingredients
 			}
 		}
+		s.fillLookupSaturatedFat(r, code, sc.BasisQuantity, sc.BasisUnit, &sc.Macros)
 		writeJSON(w, 200, s.rated(uid, sc))
 		return
 	}
 	if sc, err := s.Store.ScanByBarcode(uid, code); err == nil {
+		s.fillLookupSaturatedFat(r, code, sc.BasisQuantity, sc.BasisUnit, &sc.Macros)
 		writeJSON(w, 200, s.rated(uid, sc))
 		return
 	}
@@ -108,7 +110,7 @@ func (s *Server) saveScan(w http.ResponseWriter, r *http.Request) {
 		}
 		sc.Barcode = code
 	}
-	if sc.Source != "saved" && sc.Source != "openfoodfacts" {
+	if sc.Source != "saved" && sc.Source != "openfoodfacts" && sc.Source != "ai" {
 		sc.Source = "photo"
 	}
 	if sc.HasNutrition && (sc.BasisQuantity <= 0 || (sc.BasisUnit != "g" && sc.BasisUnit != "ml" && sc.BasisUnit != "serving")) {
@@ -120,7 +122,7 @@ func (s *Server) saveScan(w http.ResponseWriter, r *http.Request) {
 	}
 	uid := userID(r)
 	for _, v := range []float64{sc.Macros.Calories, sc.Macros.Protein, sc.Macros.Carbs, sc.Macros.Fat, sc.Macros.Fiber} {
-		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) {
+		if v < 0 || math.IsNaN(v) || math.IsInf(v, 0) || !sc.Macros.ValidSaturatedFat() {
 			writeErr(w, 400, "nutrition values must be zero or greater")
 			return
 		}
@@ -131,17 +133,25 @@ func (s *Server) saveScan(w http.ResponseWriter, r *http.Request) {
 	if sc.HasNutrition && sc.Ingredients != "" {
 		var prod models.Product
 		var err error
-		if sc.ProductID != "" { // already one of your products: just keep its ingredients up to date
+		if sc.ProductID != "" { // preserve identity and metadata on reviewed updates
 			prod, err = s.Store.SetProductIngredients(uid, sc.ProductID, sc.Ingredients, s.Now())
+			if err == nil && sc.Source == "ai" {
+				prod.Macros, prod.BasisQuantity, prod.BasisUnit = sc.Macros, sc.BasisQuantity, sc.BasisUnit
+				prod.Source, prod.Notes, prod.FromNutritionLabel, prod.Confidence = "ai", sc.Notes, false, "low"
+				prod, err = s.Store.PutProduct(uid, prod, s.Now())
+			}
 		} else {
-			source := ""
-			if sc.Source == "openfoodfacts" {
-				source = "openfoodfacts"
+			source, confidence := "", "medium"
+			if sc.Source == "ai" {
+				confidence = "low"
+			}
+			if sc.Source == "openfoodfacts" || sc.Source == "ai" {
+				source = sc.Source
 			}
 			prod, err = s.Store.PutProduct(uid, models.Product{
 				Name: sc.Name, Barcode: sc.Barcode, Ingredients: sc.Ingredients,
 				BasisQuantity: sc.BasisQuantity, BasisUnit: sc.BasisUnit, Macros: sc.Macros,
-				FromNutritionLabel: true, Confidence: "medium", Notes: sc.Notes, Source: source,
+				FromNutritionLabel: sc.Source != "ai", Confidence: confidence, Notes: sc.Notes, Source: source,
 			}, s.Now())
 		}
 		if err != nil {

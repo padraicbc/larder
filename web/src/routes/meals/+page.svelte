@@ -1,4 +1,5 @@
 <script lang="ts">
+ import { startFoodChat } from '#lib/start-food-chat.ts';
 	import { invalidateAll } from '$app/navigation';
 	import { api, errorText } from '#lib/api.ts';
 	import { cap, round } from '#lib/format.ts';
@@ -44,6 +45,7 @@
 <svelte:head><title>Meals · Larder</title></svelte:head>
 
 <h1 class="text-3xl font-extrabold lg:text-4xl">Your meals</h1>
+ <button class="btn btn-sm mt-3" onclick={() => startFoodChat({kind: 'meal', context: 'Help me plan a meal. Ask me about foods and portions before preparing a draft.'})}>Plan a meal in Food chat</button>
 <p class="text-base-content/70 mt-1 text-sm">
 	Named groups of foods, like “Usual breakfast”. Log one again from Today → Log food → Recent, or fix one to a slot when you
 	<a class="link" href="/plans">plan</a>. Make one on Today with <em>Group as meal</em>.
@@ -66,13 +68,14 @@
 			{:else}
 				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0">
-						<p class="font-semibold">{m.name} <span class="badge badge-ghost badge-sm">{m.mealType}</span></p>
+						<p class="font-semibold">{m.name} {#if m.source === 'ai'}<span class="badge badge-warning badge-sm">AI-assisted</span>{/if} <span class="badge badge-ghost badge-sm">{m.mealType}</span></p>
 						<p class="text-base-content/70 mt-1 text-sm">{m.items.map((i) => `${i.quantity} ${i.name}`).join(', ')}</p>
 						<p class="tabular text-base-content/60 mt-1 text-xs">
 							{round(m.macros.calories)} kcal · P {round(m.macros.protein, 1)} · C {round(m.macros.carbs, 1)} · F {round(m.macros.fat, 1)} · Fibre {round(m.macros.fiber, 1)}
 						</p>
 					</div>
 					<div class="flex shrink-0">
+ <button class="btn btn-ghost btn-sm" onclick={() => startFoodChat({kind: 'meal', context: JSON.stringify({name:m.name,items:m.items,macros:m.macros,notes:m.notes})})}>Discuss</button>
 						<button class="btn btn-ghost btn-sm" onclick={() => edit(m)}>Edit</button>
 						<button class="btn btn-ghost btn-square btn-sm" aria-label="Delete {m.name}" onclick={() => remove(m)}><Icon name="trash" size={16} /></button>
 					</div>

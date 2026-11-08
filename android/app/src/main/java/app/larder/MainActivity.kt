@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private fun hasCamera() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
+    private var pendingDownloadName = "larder-backup.json"
     private var pendingBackupUrl: String? = null
     private var pendingBackupCookie: String? = null
 
@@ -79,13 +80,13 @@ class MainActivity : AppCompatActivity() {
                         connection.readTimeout = 30000
                         connection.instanceFollowRedirects = false
                         if (cookie != null) connection.setRequestProperty("Cookie", cookie)
-                        check(connection.responseCode == HttpURLConnection.HTTP_OK) { "Could not download backup; reopen Settings and try again." }
+                        check(connection.responseCode == HttpURLConnection.HTTP_OK) { "Could not download the file; go back and try again." }
                         contentResolver.openOutputStream(destination)?.use { output ->
                             connection.inputStream.use { input -> input.copyTo(output) }
                         } ?: error("Could not open the selected file")
-                        runOnUiThread { Toast.makeText(this, "Backup saved", Toast.LENGTH_SHORT).show() }
+                        runOnUiThread { Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show() }
                     } catch (e: Exception) {
-                        runOnUiThread { Toast.makeText(this, e.message ?: "Backup failed", Toast.LENGTH_LONG).show() }
+                        runOnUiThread { Toast.makeText(this, e.message ?: "Download failed", Toast.LENGTH_LONG).show() }
                     } finally {
                         connection.disconnect()
                     }
@@ -131,10 +132,12 @@ class MainActivity : AppCompatActivity() {
                 val source = Uri.parse(url)
                 val current = Uri.parse(this.url ?: "")
                 if (source.scheme == "http" && source.host == "127.0.0.1" &&
-                    source.authority == current.authority && source.path == "/api/backup") {
+                    source.authority == current.authority && (source.path == "/api/backup" || source.path == "/api/products/export")) {
                     pendingBackupUrl = url
                     pendingBackupCookie = CookieManager.getInstance().getCookie(url)
-                    saveBackup.launch("larder-backup.json")
+                    pendingDownloadName =
+                        if (source.path == "/api/products/export") "larder-products.json" else "larder-backup.json"
+                    saveBackup.launch(pendingDownloadName)
                 }
             }
             visibility = View.INVISIBLE // shown once the server answers

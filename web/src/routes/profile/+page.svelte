@@ -70,7 +70,7 @@
 
 <nav class="mt-6 lg:hidden" aria-label="More">
 	<ul class="grid grid-cols-2 gap-2">
-		{#each [['/scan', 'Shop check', 'Scan food to check its quality'], ['/workouts', 'Workouts', 'Log sessions on a calendar'], ['/weight', 'Weight', 'Log and chart your weight'], ['/meals', 'Meals', 'Your saved meals'], ['/products', 'Products', 'Scanned products and ratings']] as [href, label, hint] (href)}
+		{#each [['/chat', 'Food chat', 'Discuss food, search and review before saving'], ['/scan', 'Shop check', 'Scan food to check its quality'], ['/workouts', 'Workouts', 'Log sessions on a calendar'], ['/weight', 'Weight', 'Log and chart your weight'], ['/meals', 'Meals', 'Your saved meals'], ['/products', 'Products', 'Scanned products and ratings']] as [href, label, hint] (href)}
 			<li><a {href} class="border-base-300 hover:bg-base-200 rounded-box block border p-3"><span class="block font-semibold">{label}</span><span class="text-base-content/60 text-xs">{hint}</span></a></li>
 		{/each}
 	</ul>
